@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Numerical edge-case testing for array code: catch the NaNs, overflows and precision bugs that happy-path tests miss."
 readme = "README.md"
 license = { text = "MIT" }
-authors = [{ name = "Bhaskar Gurram", email = "bhaskargurram.g123@gmail.com" }]
+authors = [{ name = "Bhaskar Gurram", email = "gurrambhaskar.ai@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
