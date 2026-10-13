@@ -94,7 +94,12 @@ class HighPrecTests(unittest.TestCase):
         self.assertLess(abs(float(ld) - exact) / exact, 1e-8)
 
     def test_highprec_falls_back_without_mpmath(self):
-        ref = highprec(numpy_fn=np.log1p, mp_fn=lambda x: x)
+        def mp_log1p(x):
+            import mpmath  # only called when mpmath is installed
+
+            return mpmath.log1p(x)
+
+        ref = highprec(numpy_fn=np.log1p, mp_fn=mp_log1p)
         if HAS_MPMATH:
             self.assertIn("mpmath", ref.precision)
         else:

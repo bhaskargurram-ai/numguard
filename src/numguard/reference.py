@@ -181,8 +181,13 @@ def mp_scalar(fn: Callable[..., Any], dps: int = 50) -> HighPrecReference:
                 xf = float(x)
                 vals.append(mpmath.mpf(xf) if xf == xf else mpmath.nan)
             r = fn(*vals)
+            if isinstance(r, mpmath.mpc):
+                # a complex result means the input is outside the real domain
+                return np.longdouble("nan") if r.imag != 0 else np.longdouble(mpmath.nstr(r.real, 25))
+            if not mpmath.isfinite(r):
+                return np.longdouble(float(r))
             # keep more than float64 precision when longdouble is extended
-            return np.longdouble(mpmath.nstr(r, 25)) if mpmath.isfinite(r) else float(r)
+            return np.longdouble(mpmath.nstr(r, 25))
 
     vec = np.vectorize(scalar, otypes=[np.longdouble])
 
