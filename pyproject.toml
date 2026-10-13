@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "numguard"
+version = "0.1.0"
+description = "Numerical edge-case testing for array code: catch the NaNs, overflows and precision bugs that happy-path tests miss."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Bhaskar Gurram", email = "bhaskargurram.g123@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "click>=8.0",
+]
+keywords = ["numpy", "testing", "numerical", "floating-point", "edge cases", "pytest", "ulp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Testing",
+]
+
+[project.optional-dependencies]
+pytest = ["pytest>=7.0"]
+mpmath = ["mpmath>=1.3"]
+scipy = ["scipy>=1.10"]
+dev = ["pytest>=7.0", "scipy>=1.10", "mpmath>=1.3"]
+
+[project.scripts]
+numguard = "numguard.cli:main"
+
+[project.entry-points.pytest11]
+numguard = "numguard.pytest_plugin"
+
+[tool.setuptools]
+package-dir = { "" = "src", "numguard._corpus" = "corpus" }
+# corpus task folders are data, shipped as (namespace-free) subpackages of numguard._corpus
+packages = [
+    "numguard",
+    "numguard._corpus",
+    "numguard._corpus.cosine_similarity",
+    "numguard._corpus.hypot",
+    "numguard._corpus.log1p",
+    "numguard._corpus.logsumexp",
+    "numguard._corpus.loo_mean",
+    "numguard._corpus.mean_float16",
+    "numguard._corpus.normalize",
+    "numguard._corpus.quantize_dynamic",
+    "numguard._corpus.sample_std",
+    "numguard._corpus.sigmoid",
+    "numguard._corpus.softmax",
+    "numguard._corpus.variance_onepass",
+]
+
+[tool.setuptools.package-data]
+"numguard._corpus" = ["*/task.md"]
+"numguard" = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
