@@ -219,7 +219,7 @@ class EvalResult:
                 detail = r.error
             rows.append([r.task, hp, ng, ", ".join(r.failed_checks), detail])
         table = format_table(["task", "happy-path test", "numguard", "failed checks",
-                              "failing cases"], rows, max_widths=[18, 15, 8, 40, 44])
+                              "failing cases"], rows, max_widths=[18, 15, 8, 50, 40])
         footer = (f"{self.candidate}: numguard passed {self.n_pass}/{self.n_tasks} tasks; "
                   f"happy-path tests passed {self.n_happy}/{self.n_tasks}")
         return table + "\n" + footer
