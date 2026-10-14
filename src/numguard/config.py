@@ -71,9 +71,14 @@ class Config:
     targets: list[dict[str, Any]]
     pytest: PytestConfig | None = None
     agent: AgentSettings = field(default_factory=AgentSettings)
+    #: Directory that target paths/modules are resolved against and pytest runs in
+    #: (default: the configuration file's directory).
+    root_override: Path | None = None
 
     @property
     def root(self) -> Path:
+        if self.root_override is not None:
+            return self.root_override
         return self.path.parent if self.path is not None else Path.cwd()
 
     def target(self, name: str) -> dict[str, Any]:

@@ -148,4 +148,6 @@ def run_config(config: Config, names: Sequence[str] | None = None, *, run_pytest
     if run_pytest_too and config.pytest is not None and not names:
         log("numguard: running pytest " + " ".join(config.pytest.args))
         run.pytest = run_pytest(config.pytest, root)
+    if not run.targets and run.pytest is None:
+        run.notes.append("numguard.toml has no [[target]] tables (and no [pytest] run): nothing was checked")
     return run

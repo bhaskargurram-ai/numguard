@@ -54,6 +54,9 @@ def main() -> None:
                    "./numguard.toml).")
 @click.option("--target", "target_names", multiple=True, metavar="NAME",
               help="With --config: only these targets (repeatable; pytest is then skipped).")
+@click.option("--root", "root_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="With --config: directory targets are resolved against and pytest runs in "
+                   "(default: the configuration file's directory).")
 @click.option("--ref", "reference", metavar="MODULE:FUNC",
               help="Reference implementation to compare against.")
 @click.option("--dtype", "dtypes", multiple=True, type=click.Choice(ALL_FLOAT_DTYPES),
@@ -93,7 +96,7 @@ def main() -> None:
               help="Exit 1 when a target fails or errors (fail), only on errors (error), or never.")
 @click.option("--max-rows", type=int, default=25, show_default=True)
 def check_cmd(target: str | None, config_path: Path | None, target_names: tuple[str, ...],
-              reference: str | None, dtypes: tuple[str, ...],
+              root_dir: Path | None, reference: str | None, dtypes: tuple[str, ...],
               properties: tuple[str, ...], domain: str | None, nan: str | None,
               batched: bool | None, monotonic: str | None, fp_signals: str | None,
               rtol: float | None, atol: float | None, large_n: int | None, seed: int | None,
@@ -120,10 +123,10 @@ def check_cmd(target: str | None, config_path: Path | None, target_names: tuple[
         if dtypes:
             overrides["dtypes"] = list(dtypes)
         _check_config(config_path, target_names, no_pytest, as_json, json_out, card_out, pr_number,
-                      head_sha, base_sha, fail_on, max_rows, overrides)
+                      head_sha, base_sha, fail_on, max_rows, overrides, root_dir)
         return
-    if config_path is not None or target_names:
-        raise click.UsageError("give either TARGET or --config/--target, not both")
+    if config_path is not None or target_names or root_dir is not None:
+        raise click.UsageError("give either TARGET or --config/--target/--root, not both")
     fn = resolve_callable(target)
     ref = resolve_callable(reference) if reference else None
     options: dict[str, Any] = {
@@ -189,12 +192,15 @@ def _write_outputs(run: Any, json_out: Path | None, card_out: Path | None, confi
 
 def _check_config(config_path: Path, names: tuple[str, ...], no_pytest: bool, as_json: bool,
                   json_out: Path | None, card_out: Path | None, pr_number: str | None, head_sha: str | None,
-                  base_sha: str | None, fail_on: str, max_rows: int, overrides: dict[str, Any]) -> None:
+                  base_sha: str | None, fail_on: str, max_rows: int, overrides: dict[str, Any],
+                  root_dir: Path | None = None) -> None:
     from .config import ConfigError, load_config  # noqa: PLC0415
     from .runconfig import run_config  # noqa: PLC0415
 
     try:
         config = load_config(config_path)
+        if root_dir is not None:
+            config.root_override = root_dir.resolve()
         for n in names:
             config.target(n)
     except ConfigError as exc:
@@ -220,6 +226,8 @@ def _check_config(config_path: Path, names: tuple[str, ...], no_pytest: bool, as
                        f"{p.skipped} skipped" + (f" ({p.message})" if p.message else ""))
             if p.status != "pass" and p.output_tail:
                 click.echo(p.output_tail[-2000:], err=True)
+        for n in run.notes:
+            click.echo(f"note: {n}")
         n_pass = sum(t.status == "pass" for t in run.targets)
         click.echo(f"numguard: {n_pass}/{len(run.targets)} targets passed; overall: {run.status.upper()}")
     bad = {"fail": ("fail", "error"), "error": ("error",), "never": ()}[fail_on]
@@ -398,6 +406,34 @@ def cases_cmd() -> None:
     for kind in KINDS:
         tags = sorted(_kind_tags(kind) - {kind})
         click.echo(f"  {kind:<16} {', '.join(tags)}")
+
+
+@main.command("init")
+@click.option("--repo", default=".", show_default=True, type=click.Path(exists=True, file_okay=False),
+              help="Repository to set up.")
+@click.option("--agent", is_flag=True, help="Also add the (experimental, opt-in) suggested-fix workflow.")
+@click.option("--force", is_flag=True, help="Overwrite existing files.")
+@click.option("--ref", default=None, help="numguard release (tag or commit SHA) the workflows use. "
+                                          "Default: this version's tag.")
+@click.option("--install-command", default=None,
+              help="Shell command that installs your project in CI (default: pip install -e \".[dev]\" || "
+                   "pip install -e .).")
+@click.option("--target", "targets", multiple=True, metavar="MODULE:FUNC",
+              help="Add a [[target]] stub for this function to numguard.toml (repeatable).")
+def init_cmd(repo: str, agent: bool, force: bool, ref: str | None, install_command: str | None,
+             targets: tuple[str, ...]) -> None:
+    """Write the GitHub workflows and a commented numguard.toml into a repository."""
+    from .init_cmd import InitError, init_repo  # noqa: PLC0415
+
+    try:
+        res = init_repo(repo, agent=agent, force=force, ref=ref, install_command=install_command, targets=targets)
+    except InitError as exc:
+        raise click.ClickException(str(exc)) from exc
+    for f in res.written:
+        click.echo(f"wrote {f}")
+    click.echo("\nNext steps:")
+    for i, step in enumerate(res.next_steps, 1):
+        click.echo(f"  {i}. {step}")
 
 
 # --------------------------------------------------------------------------

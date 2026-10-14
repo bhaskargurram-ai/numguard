@@ -1,0 +1,32 @@
+# numguard configuration (https://github.com/bhaskargurram-ai/numguard).
+#
+# `numguard check` (and the numguard GitHub workflow) runs every [[target]]
+# below on numguard's edge-case catalogue: zeros, empty arrays, NaN, +-inf,
+# huge/tiny/subnormal magnitudes, cancellation-prone data, several dtypes.
+# In CI this file is read from the pull request's BASE commit, so a PR cannot
+# weaken its own checks. Every key is documented in docs/CONFIG.md. Write
+# targets by hand, or let the optional agent draft one for review:
+#   numguard suggest mypkg.ops:logsumexp --write numguard.toml
+
+# [defaults]                                # applied to every target
+# dtypes = ["float32", "float64"]
+
+# [[target]]
+# name = "logsumexp"
+# function = "mypkg.ops:logsumexp"          # or "path/to/file.py:logsumexp"
+# inputs = ["any"]                          # one domain per positional argument
+# properties = ["translation_equivariant"]
+# reference = "special.logsumexp(x)"        # an expression over the argument names
+# reference_precision = "float64"           # or "longdouble", or "mpmath" (elementwise)
+# nan = "propagate"                         # NaN in -> NaN out
+# allow_nonfinite = []                      # cases where inf/NaN is the right answer
+# backend = "numpy"                         # or "torch", "jax", "cupy"
+
+# [pytest]                                  # also run pytest (the numguard plugin is active)
+# args = ["tests"]
+
+[agent]                                     # experimental suggested fixes (numguard-agent.yml)
+enabled = true
+# rounds = 3                                # refinement rounds for local `numguard fix`
+# max_targets = 3                           # failing targets per pull request
+# timeout = 120                             # seconds per sandboxed check run

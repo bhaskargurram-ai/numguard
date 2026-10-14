@@ -330,6 +330,15 @@ class CheckConfigCommandTests(unittest.TestCase):
         res = self.invoke("--no-pytest")
         self.assertEqual(res.exit_code, 0, res.output)
 
+    def test_root_option_resolves_relative_paths(self):
+        cfg = self.tmp / "elsewhere.toml"
+        cfg.write_text('[[target]]\nfunction = "corpus/logsumexp/reference.py:logsumexp"\n'
+                       'reference_function = "scipy.special:logsumexp"\n')
+        res = self.runner.invoke(main, ["check", "--config", str(cfg)])
+        self.assertEqual(res.exit_code, 1, res.output)  # corpus/ is not next to the config
+        res = self.runner.invoke(main, ["check", "--config", str(cfg), "--root", str(h.ROOT)])
+        self.assertEqual(res.exit_code, 0, res.output)
+
     def test_repository_config_passes(self):
         res = self.runner.invoke(main, ["check", "--config", str(h.ROOT / "numguard.toml"), "--no-pytest"])
         self.assertEqual(res.exit_code, 0, res.output)

@@ -17,6 +17,8 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -24,14 +26,92 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          python -m pip install -e ".[dev]"
       - name: Unit tests (pytest)
-        run: pytest -v
+        run: python -m pytest -q
       - name: Unit tests (unittest, no pytest needed)
         run: python -m unittest discover -s tests
       - name: Eval - reference implementations must pass
         run: numguard eval --baseline reference --json-out reference-results.json
       - name: Eval - every buggy implementation must be detected
         run: numguard eval --baseline buggy --json-out buggy-results.json
+      - name: Dogfood - numguard.toml (corpus references) must pass
+        run: numguard check --config numguard.toml
       - name: CLI smoke test
         run: python -m numguard --help
+
+  # Build the distributions and use them the way a user would: install the
+  # wheel into a fresh virtualenv (outside the checkout) and run the CLI,
+  # `numguard init`, a config-driven check and the eval harness against it.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade build twine
+          python -m build --outdir "$RUNNER_TEMP/dist"
+          ls -l "$RUNNER_TEMP/dist"
+      - name: Check distribution metadata
+        run: python -m twine check --strict "$RUNNER_TEMP"/dist/*
+      - name: Check the sdist and wheel contents
+        run: |
+          set -euo pipefail
+          tar tzf "$RUNNER_TEMP"/dist/numguard-*.tar.gz > "$RUNNER_TEMP/sdist.txt"
+          for f in LICENSE README.md pyproject.toml src/numguard/cli.py src/numguard/carddata.py \
+                   src/numguard/agent/worker.py corpus/logsumexp/task.md; do
+            grep -q "/$f\$" "$RUNNER_TEMP/sdist.txt" || { echo "::error::sdist lacks $f"; exit 1; }
+          done
+          python -m zipfile -l "$RUNNER_TEMP"/dist/numguard-*.whl > "$RUNNER_TEMP/wheel.txt"
+          for f in numguard/agent/worker.py numguard/_corpus/logsumexp/task.md numguard/_corpus/logsumexp/spec.py \
+                   numguard/py.typed; do
+            grep -q "$f" "$RUNNER_TEMP/wheel.txt" || { echo "::error::wheel lacks $f"; exit 1; }
+          done
+      - name: Install the wheel into a fresh virtualenv
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --disable-pip-version-check "$(ls "$RUNNER_TEMP"/dist/*.whl)[scipy]"
+      - name: Smoke-test the installed CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          ng="$RUNNER_TEMP/venv/bin/numguard"
+          py="$RUNNER_TEMP/venv/bin/python"
+          # The installed copy, not the checkout, must be the one that runs.
+          "$py" -c 'import numguard, sys; p = numguard.__file__; print(p); sys.exit("site-packages" not in p)'
+          "$ng" --help
+          "$ng" --version
+          "$ng" agent --help
+          "$ng" cases > /dev/null
+          "$ng" eval --baseline reference
+          "$ng" eval --baseline buggy
+          repo="$RUNNER_TEMP/init-repo"
+          mkdir -p "$repo"
+          "$ng" init --repo "$repo" --agent
+          for f in .github/workflows/numguard.yml .github/workflows/numguard-comment.yml \
+                   .github/workflows/numguard-agent.yml numguard.toml; do
+            test -s "$repo/$f" || { echo "::error::init did not write $f"; exit 1; }
+          done
+          printf 'import numpy as np\n\ndef lse(x):\n    return np.log(np.sum(np.exp(x)))\n' > "$repo/ops.py"
+          printf '[[target]]\nfunction = "ops:lse"\nreference = "special.logsumexp(x)"\n' >> "$repo/numguard.toml"
+          status=0
+          "$ng" check --config "$repo/numguard.toml" --json-out "$repo/result.json" --card-out "$repo/card.md" || status=$?
+          test "$status" -eq 1 || { echo "::error::the naive logsumexp should fail (status $status)"; exit 1; }
+          "$py" - "$repo" <<'PY'
+          import json, pathlib, sys
+          from numguard.carddata import parse_card_data
+          from numguard.result import validate_result
+          repo = pathlib.Path(sys.argv[1])
+          result = validate_result(json.loads((repo / "result.json").read_text()))
+          data = parse_card_data((repo / "card.md").read_text())
+          print("status:", result["status"], "data block:", data["status"], data["targets"])
+          assert result["status"] == "fail" and data["status"] == "fail"
+          assert "finite" in result["targets"][0]["failed_checks"]
+          PY
