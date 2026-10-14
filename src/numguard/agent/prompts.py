@@ -33,7 +33,10 @@ weaken checks to hide problems. Keep the rationale short and factual.
 FIX_SYSTEM = """You repair numerical robustness bugs in Python functions. numguard ran the function on its edge-case \
 catalogue and some checks failed (see the failure table). Write a corrected version of the function that:
 - keeps exactly the same name and signature (parameter names, order, defaults);
-- keeps the documented behaviour on ordinary inputs and the output dtype/shape conventions;
+- keeps the documented behaviour on ordinary inputs and the output dtype/shape conventions: numguard runs \
+every case in each listed dtype and compares the output's dtype and shape with the original's, so a float32 input \
+must still give a float32 result (if you compute in a wider dtype, cast the result back to the input's dtype), and \
+a scalar stays a scalar;
 - fixes the failing checks with standard numerically stable techniques (max-shifting for exp/log sums, \
 two-pass or Welford variance, scaling for norms/hypot, log1p/expm1, compensated summation, guarding empty inputs, \
 propagating NaN, computing in a wider dtype and casting back, ...);
@@ -114,11 +117,20 @@ def suggest_message(target: str, signature: str, arg_names: Sequence[str], locat
             "submit_spec.")
 
 
-def fix_message(target: str, location: str, source: str, spec_text: str, failures: str, nonce: str) -> str:
+VARIANT_HINTS = (
+    "",
+    "Hint for this attempt: keep the arithmetic in the input's own dtype (no promotion) and make it stable there.",
+    "Hint for this attempt: compute in float64 (or wider) internally and cast the result back to the input's dtype.",
+)
+
+
+def fix_message(target: str, location: str, source: str, spec_text: str, failures: str, nonce: str,
+                hint: str = "") -> str:
     return (f"Target: {target} (defined in {location}).\n\nCurrent source:\n{wrap_untrusted(source, nonce, 'source')}\n\n"
             f"Spec numguard checks it with:\n{wrap_untrusted(spec_text, nonce, 'spec')}\n\n"
             f"Failing checks (grouped by check and case):\n{wrap_untrusted(failures, nonce, 'report')}\n\n"
-            "Read more of the module with read_file if you need its imports or helpers, then call submit_rewrite.")
+            "Read more of the module with read_file if you need its imports or helpers, then call submit_rewrite."
+            + (f"\n\n{hint}" if hint else ""))
 
 
 def fix_feedback(round_no: int, reasons: Sequence[str], failures: str, nonce: str) -> str:

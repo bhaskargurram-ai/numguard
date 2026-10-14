@@ -181,8 +181,12 @@ for your own code. On pull requests the code is untrusted, so
                                    comment  (comment.yml) the card gains "Suggested fixes"
 ```
 
-In CI there is **one round** per target: refinement needs execution feedback,
-and the job that executes code must not hold the key. `verify` treats the
+In CI there are no refinement rounds: refinement needs execution feedback, and
+the job that executes code must not hold the key. Instead `propose` asks for
+`[agent] variants` (default 3) **independent** rewrites per target, each in a
+fresh session with a different strategy hint (as is, in the input dtype, in
+float64 cast back), and `verify` runs every one and keeps the best: a verified
+rewrite with the fewest failing results, else the closest rejected one. `verify` treats the
 manifest as untrusted (strict schema, `cand_<n>.py` names only, no symlinks,
 size caps) and never trusts the propose job's static check.
 

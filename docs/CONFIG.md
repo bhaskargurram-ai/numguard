@@ -147,6 +147,7 @@ A failing or crashing pytest run makes the overall status `fail` / `error`.
 | `rounds` | 3 | refinement rounds of local `numguard fix` (when `--rounds` is not given) |
 | `max_tool_calls` | 25 | read-only tool calls per model conversation (`fix`, `agent propose`) |
 | `max_targets` | 3 | failing targets the CI agent tries per pull request |
+| `variants` | 3 | independent rewrites the CI agent proposes per target (1–10); the verify job runs all and keeps the best |
 | `timeout` | 120 | seconds for each sandboxed check run in `agent verify` |
 
 See [AGENT.md](AGENT.md).

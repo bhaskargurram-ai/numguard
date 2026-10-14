@@ -141,12 +141,12 @@ class CISplitTests(unittest.TestCase):
         self.assertEqual(res.exit_code, 1, res.output)
         (self.repo.root / "IMPORTED").unlink()  # the check job ran the code; reset the marker
 
-    def propose(self, steps, provider="anthropic"):
+    def propose(self, steps, provider="anthropic", variants=1):
         t = ScriptedTransport(provider, steps)
         with fake_llm(t):
             res = self.runner.invoke(main, ["agent", "propose", "--config", str(self.repo.root / "numguard.toml"),
                                             "--result", str(self.out / "result.json"), "--repo", str(self.repo.root),
-                                            "--out-dir", str(self.out / "cands")])
+                                            "--out-dir", str(self.out / "cands"), "--variants", str(variants)])
         self.assertEqual(res.exit_code, 0, res.output)
         return t, res
 
@@ -203,6 +203,29 @@ class CISplitTests(unittest.TestCase):
         with self.assertRaises(ManifestError):
             load_manifest(cands)
         self.assertNotEqual(self.verify().exit_code, 0)
+
+    def test_variants_are_independent_and_verify_keeps_the_best(self):
+        t, res = self.propose([[("submit_rewrite", {"code": WRONG, "rationale": "first"})],
+                               [("submit_rewrite", {"code": STABLE, "rationale": "second"})],
+                               [("submit_rewrite", {"code": WRONG, "rationale": "third"})]], variants=3)
+        self.assertIn("3 candidate rewrite(s)", res.output)
+        self.assertEqual(len(t.requests), 3)  # one fresh session per variant
+        self.assertIn("input's own dtype", t.request_text(1))
+        self.assertIn("cast the result back", t.request_text(2))
+        res = self.verify()
+        self.assertEqual(res.exit_code, 0, res.output)
+        fixes = json.loads((self.out / "final.json").read_text())["fixes"]
+        self.assertEqual(len(fixes), 1)  # one entry per target, not per variant
+        self.assertEqual((fixes[0]["status"], fixes[0]["rounds"], fixes[0]["rationale"]), ("verified", 3, "second"))
+        self.assertIn("3 attempts", (self.out / "card.md").read_text())
+
+    def test_a_failing_variant_does_not_lose_the_others(self):
+        # the second session gets no scripted answer (the model call fails): the first still counts
+        _, res = self.propose([[("submit_rewrite", {"code": STABLE, "rationale": "ok"})]], variants=2)
+        m = json.loads((self.out / "cands" / "manifest.json").read_text())
+        self.assertEqual([c["status"] for c in m["candidates"]], ["submitted", "error"])
+        res = self.verify()
+        self.assertEqual(json.loads((self.out / "final.json").read_text())["fixes"][0]["status"], "verified")
 
     def test_propose_is_a_no_op_when_the_agent_is_disabled(self):
         cfg = self.repo.root / "numguard.toml"

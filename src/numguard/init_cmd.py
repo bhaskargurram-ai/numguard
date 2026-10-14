@@ -224,6 +224,7 @@ def config_template(agent: bool = False, targets: Sequence[str] = ()) -> str:
 # enabled = false
 # rounds = 3                                # refinement rounds for local `numguard fix`
 # max_targets = 3                           # failing targets per pull request
+# variants = 3                              # independent rewrites per target in CI; the best verified one is shown
 # timeout = 120                             # seconds per sandboxed check run
 """
     if agent:

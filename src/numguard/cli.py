@@ -708,9 +708,11 @@ def agent_group() -> None:
               help="Candidates directory (manifest.json + cand_<n>.py).")
 @click.option("--max-targets", type=click.IntRange(1, 50), default=None,
               help="Failing targets to try (default: [agent] max_targets, 3).")
+@click.option("--variants", type=click.IntRange(1, 10), default=None,
+              help="Independent rewrites per target; verify keeps the best (default: [agent] variants, 3).")
 @_llm_options
 def agent_propose_cmd(config_path: Path, result_path: Path, repo: Path, out_dir: Path, max_targets: int | None,
-                      provider: str | None, model: str | None, base_url: str | None,
+                      variants: int | None, provider: str | None, model: str | None, base_url: str | None,
                       reasoning_effort: str | None) -> None:
     """Ask the model for rewrites of failing targets. Executes nothing from the repository."""
     from .agent.ci import propose  # noqa: PLC0415
@@ -727,7 +729,7 @@ def agent_propose_cmd(config_path: Path, result_path: Path, repo: Path, out_dir:
         click.echo("numguard agent: [agent] enabled = true is not set in the configuration; nothing to do")
         return
     llm = _make_llm(provider, model, base_url, reasoning_effort)
-    manifest = propose(config, result, repo, out_dir, llm, max_targets=max_targets,
+    manifest = propose(config, result, repo, out_dir, llm, max_targets=max_targets, variants=variants,
                        log=lambda m: click.echo(m, err=True))
     n = sum(c["status"] == "submitted" for c in manifest["candidates"])
     click.echo(f"numguard agent propose: {n} candidate rewrite(s) in {out_dir}")

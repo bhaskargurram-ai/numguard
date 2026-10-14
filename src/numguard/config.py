@@ -63,6 +63,7 @@ class AgentSettings:
     max_tool_calls: int = 25
     max_targets: int = 3
     timeout: int = 120
+    variants: int = 3
 
 
 @dataclass
@@ -155,7 +156,7 @@ def parse_config(data: Mapping[str, Any], path: Path | None = None) -> Config:
     agent = AgentSettings()
     if "agent" in data:
         raw = data["agent"]
-        allowed = {"enabled", "rounds", "max_tool_calls", "max_targets", "timeout"}
+        allowed = {"enabled", "rounds", "max_tool_calls", "max_targets", "timeout", "variants"}
         if not isinstance(raw, Mapping) or set(raw) - allowed:
             raise ConfigError(f"[agent] accepts {', '.join(sorted(allowed))}")
         if not isinstance(raw.get("enabled", False), bool):
@@ -166,6 +167,7 @@ def parse_config(data: Mapping[str, Any], path: Path | None = None) -> Config:
             max_tool_calls=_int(raw.get("max_tool_calls", 25), "agent.max_tool_calls", 1, 200),
             max_targets=_int(raw.get("max_targets", 3), "agent.max_targets", 1, 50),
             timeout=_int(raw.get("timeout", 120), "agent.timeout", 5, 3600),
+            variants=_int(raw.get("variants", 3), "agent.variants", 1, 10),
         )
     return Config(path=path, targets=targets, pytest=py, agent=agent)
 

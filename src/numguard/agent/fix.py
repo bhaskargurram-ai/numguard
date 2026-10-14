@@ -73,7 +73,8 @@ class FixOutcome:
 
     @property
     def verified(self) -> Attempt | None:
-        return next((a for a in self.attempts if a.status == "verified"), None)
+        ok = [a for a in self.attempts if a.status == "verified"]
+        return min(ok, key=lambda a: (a.n_failures if a.n_failures is not None else 0, a.round)) if ok else None
 
     def fix_entry(self) -> dict[str, Any]:
         """The ``fixes[]`` entry of result.json."""
