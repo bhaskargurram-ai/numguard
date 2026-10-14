@@ -67,7 +67,8 @@ All notable changes to this project are documented here. The format follows
   importing), `Report.grouped_failures()`, `Report.backend`.
 - Release engineering: CI packaging job (build, `twine check`, install the
   wheel into a fresh virtualenv, smoke-test outside the checkout),
-  `release.yml` (PyPI trusted publishing; GitHub release from this file),
+  `release.yml` (one-click release that creates the tag; PyPI publishing with a
+  `PYPI_API_TOKEN` secret or trusted publishing; GitHub release from this file),
   `pages.yml`; docs/AGENT.md, docs/SECURITY_MODEL.md, docs/TESTING.md,
   docs/CONFIG.md, docs/CLI.md and docs/GITHUB.md.
 
