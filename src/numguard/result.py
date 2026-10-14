@@ -99,7 +99,7 @@ def build_result(run: Any, *, pr_number: int | None = None, head: str | None = N
         "pr_number": pr_number,
         "head": head,
         "base": base,
-        "config": config_path,
+        "config": _cap(config_path, 300),
         "targets": [target_entry(t) for t in run.targets],
         "pytest": py,
         "fixes": fixes,
