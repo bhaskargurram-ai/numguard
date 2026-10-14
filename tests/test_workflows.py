@@ -187,10 +187,18 @@ class WorkflowSecurityTest(unittest.TestCase):
 
     def test_release_ci_and_pages(self):
         rel = load(WF_DIR / "release.yml")
-        self.assertEqual(rel["on"], {"push": {"tags": ["v*"]}})
+        self.assertEqual(rel["on"]["push"], {"tags": ["v*"]})
+        self.assertEqual(set(rel["on"]["workflow_dispatch"]["inputs"]), {"version", "pypi"})
+        # "Run workflow" creates the tag itself (only that job may write contents besides the release)
+        self.assertEqual(rel["jobs"]["tag"]["if"], "github.event_name == 'workflow_dispatch'")
+        self.assertEqual(rel["jobs"]["tag"]["permissions"], {"contents": "write"})
+        for s in rel["jobs"]["build"]["steps"]:  # untrusted input reaches scripts via env only
+            self.assertNotIn("${{", s.get("run", ""))
+        pub = rel["jobs"]["publish"]
+        self.assertEqual(pub["steps"][-1]["with"]["password"], "${{ secrets.PYPI_API_TOKEN }}")
         self.assertEqual(rel["jobs"]["publish"]["permissions"], {"id-token": "write"})
         self.assertEqual(rel["jobs"]["publish"]["environment"]["name"], "pypi")
-        self.assertEqual(rel["jobs"]["github-release"]["needs"], "build")  # not gated on PyPI
+        self.assertEqual(rel["jobs"]["github-release"]["needs"], ["build", "tag"])  # not gated on PyPI
         self.assertIn("--clobber", json.dumps(rel["jobs"]["github-release"]))
         pages = load(WF_DIR / "pages.yml")
         self.assertEqual(pages["jobs"]["deploy"]["if"], "github.event.repository.private == false")
