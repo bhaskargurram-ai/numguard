@@ -115,6 +115,7 @@ class Report:
     n_cases: int = 0
     reference: str | None = None
     duration_s: float = 0.0
+    backend: str | None = None
 
     # ------------------------------------------------------------------ queries
     @property
@@ -151,6 +152,12 @@ class Report:
         return self.ok
 
     # --------------------------------------------------------------- rendering
+    def grouped_failures(self) -> list[dict[str, Any]]:
+        """Failures grouped by (check, case): dicts with ``check``, ``case``,
+        ``dtypes``, ``rel_err``, ``ulp`` (formatted strings) and ``detail``."""
+        keys = ("check", "case", "dtypes", "rel_err", "ulp", "detail")
+        return [dict(zip(keys, row)) for row in self._grouped_failures()]
+
     def _grouped_failures(self) -> list[list[str]]:
         groups: dict[tuple[str, str], list[CheckResult]] = {}
         for r in self.failures:
@@ -185,7 +192,8 @@ class Report:
                 f"{len(self.results) - n_fail - sum(1 for r in self.results if r.status == SKIP)}"
                 f" passed, {n_fail} failed"
                 f" ({self.n_cases} cases; dtypes: {', '.join(self.dtypes) or '-'}"
-                + (f"; reference: {self.reference}" if self.reference else "") + ")")
+                + (f"; reference: {self.reference}" if self.reference else "")
+                + (f"; backend: {self.backend}" if self.backend else "") + ")")
         lines = [head]
         if self.ok:
             return "\n".join(lines)
@@ -207,6 +215,7 @@ class Report:
             "dtypes": list(self.dtypes),
             "n_cases": self.n_cases,
             "reference": self.reference,
+            "backend": self.backend,
             "duration_s": round(self.duration_s, 4),
             "counts": self.counts(),
             "results": [r.to_dict() for r in self.results],
