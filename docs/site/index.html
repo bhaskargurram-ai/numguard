@@ -144,6 +144,7 @@
 
   figure { margin: 0; }
   figcaption { color: var(--muted); font-size: 14.5px; margin-top: 12px; max-width: 46em; }
+  figcaption code, .intro code { white-space: normal; overflow-wrap: anywhere; }
   .diagram { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; }
   .diagram img { width: 100%; min-width: 760px; }
   .diagram:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
@@ -302,6 +303,11 @@
         </picture></div>
         <figcaption>From <code>examples/readme_logsumexp.py</code>, with NumPy 2.5.3 on Python 3.13.</figcaption>
       </figure>
+      <p class="intro" style="margin-top:48px">On a pull request the same results arrive as one comment, rebuilt from validated data by a job that never runs the PR's code.</p>
+      <figure class="shot">
+        <div class="term" tabindex="0" role="region" aria-label="PR card, scrolls sideways on small screens"><img src="assets/numguard-card.png" width="1880" height="1458" loading="lazy" alt="A real numguard card: 2 of 2 targets fail numerical edge-case checks. logsumexp fails finite and reference with 16 failing results, log1p fails reference with 6. The expanded logsumexp section shows the failure table with inf where the reference is finite."></div>
+        <figcaption>A real card from <code>numguard check --config numguard.toml --card-out card.md</code> on a two-function example project.</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -378,10 +384,10 @@
       <div class="split">
         <div class="stat">
           <p class="lead-note">No agent numbers yet.</p>
-          <p>We haven't measured how often <code>fix</code> finds a verified rewrite, or published <code>bench</code> results for any model, so this page shows none. When <code>fix</code> succeeds you get a diff and a before/after table; files change only with <code>--apply</code>.</p>
+          <p>We haven't measured how often <code>suggest</code> or <code>fix</code> produce something useful, or published <code>bench</code> results for any model, so this page shows none. When <code>fix</code> succeeds you get a diff and a before/after table; files change only with <code>--apply</code>. On pull requests the agent gets one round per failing target, and a verified rewrite shows up on the card as a diff.</p>
         </div>
         <ul class="points">
-          <li><strong>Read-only tools.</strong> The model sees the source, the failure table and the spec. Its only output is a schema-checked submit call.</li>
+          <li><strong>Read-only tools.</strong> The model sees the source, the failure table and the spec. Its only output is a schema-checked submit call, and its code must pass a static denylist before anything runs.</li>
           <li><strong>Suspect references.</strong> If a suggested reference disagrees with your function on ordinary inputs, numguard flags the reference instead of reporting bugs.</li>
           <li><strong>Herbie does this properly for expressions.</strong> For a scalar formula, its search with a real accuracy measure beats an LLM guess. numguard covers whole array functions, and only trusts what it ran.</li>
         </ul>
@@ -398,8 +404,8 @@
       </figure>
       <div class="split">
         <ul class="points">
-          <li><strong>Check job.</strong> Runs on <code>pull_request</code> with a read-only token and no secrets, and reads <code>numguard.toml</code> from the base commit so a PR can't loosen its own checks.</li>
-          <li><strong>Agent jobs.</strong> The job with the key reads source as data. Candidate rewrites run in a separate job with no secrets, inside a subprocess with a timeout and a scrubbed environment.</li>
+          <li><strong>Check job.</strong> Runs on <code>pull_request</code> with a read-only token and no secrets, and by default reads <code>numguard.toml</code> from the base commit so a PR can't loosen its own checks.</li>
+          <li><strong>Agent jobs.</strong> A gate with no key decides whether to run. The job with the key reads source as data. Candidate rewrites run in a separate job with no secrets, inside a subprocess with a timeout and a scrubbed environment.</li>
           <li><strong>Comment job.</strong> Never checks out PR code. It validates <code>result.json</code>, re-renders the card and upserts one sticky comment.</li>
         </ul>
         <ul class="points warn">
@@ -437,7 +443,7 @@
         <li>
           <h3>Install</h3>
           <pre><code>pip install numguard   <span class="c"># once 1.0.0 is on PyPI</span>
-pip install "git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"</code></pre>
+pip install "numguard @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"</code></pre>
         </li>
         <li>
           <h3>Check a function</h3>
@@ -447,8 +453,8 @@ pip install "git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"</code></pr
         </li>
         <li>
           <h3>Add it to pull requests</h3>
-          <p>From your repository root. It writes a commented <code>numguard.toml</code> and the caller workflows, and won't overwrite files without <code>--force</code>.</p>
-          <pre><code>numguard init           <span class="c"># add --agent for the experimental fix agent</span></code></pre>
+          <p>From your repository root. It writes a commented <code>numguard.toml</code> and the caller workflows, and won't overwrite files without <code>--force</code>. List your functions as <code>[[target]]</code> tables; add a <code>[pytest]</code> table to run your test suite too.</p>
+          <pre><code>numguard init --target mypkg.ops:logsumexp   <span class="c"># add --agent for the fix agent</span></code></pre>
           <details>
             <summary><code>.github/workflows/numguard.yml</code>: run the checks</summary>
 <pre><code>name: numguard
@@ -469,10 +475,10 @@ jobs:
     with:
       numguard-ref: v1.0.0
       python-version: "3.12"
+      <span class="c"># Installs the project under test; this runs PR code (unprivileged job).</span>
       install-command: 'pip install -e ".[dev]" || pip install -e .'
-      config: numguard.toml
-      pytest: false     <span class="c"># true: also run pytest with the numguard plugin</span>
-      fail-on: failures <span class="c"># or "never" to report without failing</span></code></pre>
+      config: numguard.toml   <span class="c"># read from the PR's base commit when it exists there</span>
+      fail-on: fail           <span class="c"># or "error" / "never"</span></code></pre>
           </details>
           <details>
             <summary><code>.github/workflows/numguard-comment.yml</code>: post the card</summary>
@@ -480,7 +486,7 @@ jobs:
 
 on:
   workflow_run:
-    workflows: ["numguard"]
+    workflows: ["numguard"]   <span class="c"># must match the `name:` of numguard.yml</span>
     types: [completed]
 
 permissions: {}
@@ -490,17 +496,64 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request' &amp;&amp; github.event.workflow_run.conclusion != 'cancelled'
     permissions:
       contents: read
-      actions: read
-      pull-requests: write
+      actions: read          <span class="c"># download the artifact of the triggering run</span>
+      pull-requests: write   <span class="c"># upsert the comment and the status label</span>
     uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.0.0
     with:
       numguard-ref: v1.0.0
       labels: true</code></pre>
           </details>
+          <details>
+            <summary><code>.github/workflows/numguard-agent.yml</code>: optional fix agent</summary>
+<pre><code>name: numguard agent
+
+on:
+  workflow_run:
+    workflows: ["numguard"]   <span class="c"># must match the `name:` of numguard.yml</span>
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  agent:
+    if: github.event.workflow_run.event == 'pull_request' &amp;&amp; github.event.workflow_run.conclusion != 'cancelled'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    uses: bhaskargurram-ai/numguard/.github/workflows/agent.yml@v1.0.0
+    with:
+      numguard-ref: v1.0.0
+      llm-provider: ${{ vars.NUMGUARD_LLM_PROVIDER }}
+      llm-model: ${{ vars.NUMGUARD_LLM_MODEL }}
+      llm-base-url: ${{ vars.NUMGUARD_LLM_BASE_URL }}
+      llm-reasoning-effort: ${{ vars.NUMGUARD_LLM_REASONING_EFFORT }}
+      python-version: "3.12"
+      install-command: 'pip install -e ".[dev]" || pip install -e .'
+      run-for: trusted   <span class="c"># or "everyone" (spends API credits on any fork PR)</span>
+    secrets:
+      llm-api-key: ${{ secrets.NUMGUARD_LLM_API_KEY }}
+
+  comment:
+    needs: agent
+    if: needs.agent.outputs.verified == 'true'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.0.0
+    with:
+      numguard-ref: v1.0.0
+      <span class="c"># Trusted values: the PR number comes from the gate job (API data, no PR</span>
+      <span class="c"># code ran there) and the artifact from this run's verify job.</span>
+      pr-number: ${{ needs.agent.outputs.pr-number }}
+      artifact-run-id: ${{ github.run_id }}
+      labels: true</code></pre>
+          </details>
         </li>
         <li>
           <h3>Open a pull request</h3>
-          <p>The failure table appears in the run's job summary right away, and as one PR comment once the comment workflow runs. For the agent, add a <code>NUMGUARD_LLM_API_KEY</code> secret and <code>NUMGUARD_LLM_PROVIDER</code> and <code>NUMGUARD_LLM_MODEL</code> variables first.</p>
+          <p>Merge the workflows to your default branch first: <code>workflow_run</code> workflows only run from there. The card appears in the run's job summary right away, and as one PR comment with a <code>numguard: pass</code>, <code>fail</code> or <code>error</code> label once the comment workflow runs. For the agent, add a <code>NUMGUARD_LLM_API_KEY</code> secret and <code>NUMGUARD_LLM_PROVIDER</code> and <code>NUMGUARD_LLM_MODEL</code> variables, and keep <code>[agent] enabled = true</code> in <code>numguard.toml</code>.</p>
         </li>
       </ol>
     </div>

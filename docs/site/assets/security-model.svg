@@ -61,7 +61,7 @@
   <rect class="off" x="162" y="144" width="104" height="22" rx="11"/>
   <text class="chip off-t" x="214" y="159" text-anchor="middle">no secrets</text>
   <text class="li mono" x="50" y="192">numguard check --config</text>
-  <text class="li" x="50" y="212">plus the pytest plugin, if set</text>
+  <text class="li" x="50" y="212">plus pytest, if [pytest] is set</text>
   <text class="li mono" x="50" y="236">contents: read</text>
   <text class="li mono" x="50" y="256">persist-credentials: false</text>
   <text class="li" x="50" y="280">Card in the job summary</text>

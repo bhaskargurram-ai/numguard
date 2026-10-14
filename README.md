@@ -104,11 +104,11 @@ An LLM never decides a result. The [agent](#agent-experimental) can draft a spec
 ### 1. Install
 
 ```bash
-pip install numguard                                                  # once 1.0.0 is published to PyPI
-pip install "git+https://github.com/bhaskargurram-ai/numguard@v1.0.0" # or straight from GitHub
+pip install numguard                                                              # once 1.0.0 is on PyPI
+pip install "numguard @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"   # or straight from GitHub
 ```
 
-The only runtime dependencies are NumPy and click. Extras: `numguard[pytest]`, `numguard[scipy]`, `numguard[mpmath]` (arbitrary-precision references), `numguard[hypothesis]` (strategies), `numguard[dev]` (everything for working on numguard). Python 3.10 or newer.
+The only runtime dependencies are NumPy and click. Extras: `numguard[pytest]`, `numguard[scipy]`, `numguard[mpmath]` (arbitrary-precision references), `numguard[hypothesis]` ([strategies](#hypothesis-strategies)), `numguard[bfloat16]` (`ml_dtypes`), `numguard[dev]` (everything for working on numguard). Python 3.10 or newer.
 
 ### 2. Check a function
 
@@ -137,7 +137,7 @@ From the shell (exit status 1 on any failure):
 ```bash
 numguard check mypkg.stats:my_variance --ref numpy:var --dtype float16 --dtype float32 \
     --prop translation_invariant --prop permutation_invariant
-numguard check path/to/file.py:softmax --batched --fp-signals fail --json
+numguard check path/to/ops.py:softmax --batched --fp-signals fail --json
 ```
 
 Or attach the contract to the function itself. `@numguard.guard(...)` takes the same arguments and does not change the function's behaviour:
@@ -172,12 +172,13 @@ Notebooks work the same way as scripts: `numguard.check(...).summary()` prints t
 From the root of your repository:
 
 ```bash
-numguard init              # add --agent to also set up the experimental fix agent
+numguard init                                  # add --agent for the experimental fix agent
+numguard init --target mypkg.ops:logsumexp     # also add a [[target]] stub (repeatable)
 ```
 
-`init` writes a commented [`numguard.toml`](#config-file) and the caller workflows below, refuses to overwrite existing files unless you pass `--force`, and prints the next steps. List your functions as `[[target]]` tables in `numguard.toml`, commit, and open a pull request. The files in [`examples/workflows/`](examples/workflows) are exactly what `init` generates.
+`init` writes the caller workflows below and a commented [`numguard.toml`](#config-file), refuses to overwrite existing files without `--force`, and prints the next steps. `--install-command CMD` changes how the workflow installs your project and `--ref` pins another numguard tag or commit. List your functions as `[[target]]` tables in `numguard.toml`, merge the files to your default branch (`workflow_run` workflows only run from there), and open a pull request. The files in [`examples/workflows/`](examples/workflows) and [`examples/numguard.toml`](examples/numguard.toml) are exactly what `numguard init --agent` writes; the snippets below are copied from them without their comment headers.
 
-numguard runs as separate workflows so that the pull request's code and privileged tokens never share a job ([why](#security-model)). Each caller is a few lines that point at a reusable workflow in this repository. Pin `@v1.0.0`, or a full commit SHA if you want to be strict.
+numguard runs as separate workflows so that the pull request's code and privileged tokens never share a job ([why](#security-model)). Each caller is a few lines that point at a reusable workflow in this repository. Pin `@v1.0.0`, or a full commit SHA if you want to be strict, and keep `numguard-ref` the same.
 
 **`.github/workflows/numguard.yml`** runs the checks. It is unprivileged and is where PR code runs.
 
@@ -202,12 +203,11 @@ jobs:
       python-version: "3.12"
       # Installs the project under test; this runs PR code (unprivileged job).
       install-command: 'pip install -e ".[dev]" || pip install -e .'
-      config: numguard.toml
-      pytest: false          # true: also run pytest with the numguard plugin
-      fail-on: failures      # or "never" to report without failing the check
+      config: numguard.toml   # read from the PR's base commit when it exists there
+      fail-on: fail           # or "error" / "never"
 ```
 
-**`.github/workflows/numguard-comment.yml`** posts the card. It is privileged and never runs PR code.
+**`.github/workflows/numguard-comment.yml`** posts the card and sets a `numguard: pass`, `numguard: fail` or `numguard: error` label. It is privileged and never runs PR code.
 
 ```yaml
 name: numguard comment
@@ -225,14 +225,14 @@ jobs:
     permissions:
       contents: read
       actions: read          # download the artifact of the triggering run
-      pull-requests: write   # upsert the sticky comment and the label
+      pull-requests: write   # upsert the comment and the status label
     uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.0.0
     with:
       numguard-ref: v1.0.0
       labels: true
 ```
 
-**`.github/workflows/numguard-agent.yml`** *(optional, experimental, written by `init --agent`)* proposes a verified rewrite for each failing target. It runs only for PRs labelled `numguard:agent` or opened by owners, members and collaborators, unless you set `run-for: everyone`.
+**`.github/workflows/numguard-agent.yml`** *(optional, experimental, written by `init --agent`)* proposes a rewrite for each failing target and verifies it in a separate job. It runs only for PRs labelled `numguard:agent` or opened by owners, members and collaborators, unless you set `run-for: everyone`.
 
 ```yaml
 name: numguard agent
@@ -260,7 +260,6 @@ jobs:
       llm-reasoning-effort: ${{ vars.NUMGUARD_LLM_REASONING_EFFORT }}
       python-version: "3.12"
       install-command: 'pip install -e ".[dev]" || pip install -e .'
-      rounds: 3
       run-for: trusted   # or "everyone" (spends API credits on any fork PR)
     secrets:
       llm-api-key: ${{ secrets.NUMGUARD_LLM_API_KEY }}
@@ -275,21 +274,23 @@ jobs:
     uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.0.0
     with:
       numguard-ref: v1.0.0
-      # Trusted values: the PR number comes from the agent's gate job (API data,
-      # no PR code ran there) and the artifact from this run's verify job.
+      # Trusted values: the PR number comes from the gate job (API data, no PR
+      # code ran there) and the artifact from this run's verify job.
       pr-number: ${{ needs.agent.outputs.pr-number }}
       artifact-run-id: ${{ github.run_id }}
       labels: true
 ```
 
-For the agent, add a repository **secret** `NUMGUARD_LLM_API_KEY` and repository **variables** `NUMGUARD_LLM_PROVIDER` (`anthropic` or `openai`) and `NUMGUARD_LLM_MODEL` (optional: `NUMGUARD_LLM_BASE_URL` and `NUMGUARD_LLM_REASONING_EFFORT`). The key is only passed to the propose job, which never runs PR code.
+For the agent, add a repository **secret** `NUMGUARD_LLM_API_KEY` and repository **variables** `NUMGUARD_LLM_PROVIDER` (`anthropic` or `openai`) and `NUMGUARD_LLM_MODEL` (optional: `NUMGUARD_LLM_BASE_URL`, and `NUMGUARD_LLM_REASONING_EFFORT`, which OpenAI's GPT-6 Luna needs set to `none`), and set `[agent] enabled = true` in `numguard.toml` (`init --agent` does that). The key is only passed to the propose job, which never runs PR code.
+
+The reusable workflows take a few more inputs: `config-from` (`base`, the default, reads `numguard.toml` from the PR's base commit; `head` uses the PR's), `numguard-extras` (default `scipy`), `numguard-repository` and `timeout-minutes`. Pytest runs when `numguard.toml` has a [`[pytest]`](#config-file) table. Every input is listed in [docs/GITHUB.md](docs/GITHUB.md).
 
 On fork PRs the check workflow has no write token, so the card also appears in the run's **job summary** before the comment workflow posts it.
 
 <details>
 <summary><b>Use the composite action directly</b></summary>
 
-The `bhaskargurram-ai/numguard@v1.0.0` composite action ([`action.yml`](action.yml)) wraps the same steps for custom setups. The reusable workflows above are the recommended setup because they keep the trust zones apart for you.
+The `bhaskargurram-ai/numguard@v1.0.0` composite action ([`action.yml`](action.yml)) takes a `command`: `check` (default), `summary`, `comment`, `agent-propose` or `agent-verify`. The reusable workflows above combine them so that the trust zones stay apart; see [docs/GITHUB.md](docs/GITHUB.md#the-composite-action) before wiring them up yourself.
 
 </details>
 
@@ -365,7 +366,7 @@ numguard.check(my_log1p, reference=ref, domain="(-1, inf)")
 <details>
 <summary><b>All <code>check()</code> options</b></summary>
 
-`inputs=`, `domain=`, `reference=`, `properties=`, `dtypes=`, `rtol=`, `atol=`, `nan="propagate" | "raise" | "ignore"`, `allow_nonfinite=[...]`, `may_raise=[...]`, `out_dtype=` (default `"preserve"`), `batched=`, `batch_axis=`, `monotonic=`, `bounds=`, `fp_signals="ignore" | "fail"`, `postconditions=[fn]`, `extra_cases={...}`, `include=`/`exclude=`, `ignore=["check:pattern"]`, `kwargs=` (forwarded to the function), `ref_kwargs=`, `n=`, `large_n=`, `seed=`, `backend=`. `@numguard.guard`, the pytest marker and `[[target]]` tables accept the same names.
+`inputs=`, `domain=`, `reference=`, `properties=`, `dtypes=`, `rtol=`, `atol=`, `nan="propagate" | "raise" | "ignore"`, `allow_nonfinite=[...]`, `may_raise=[...]`, `out_dtype=` (default `"preserve"`), `batched=`, `batch_axis=`, `monotonic=`, `bounds=`, `fp_signals="ignore" | "fail"`, `postconditions=[fn]`, `extra_cases={...}`, `include=`/`exclude=`, `ignore=["check:pattern"]`, `kwargs=` (forwarded to the function), `ref_kwargs=`, `n=`, `large_n=`, `seed=`, `backend=`. `@numguard.guard` and the pytest marker accept the same names; `[[target]]` tables accept the ones that can be written in TOML (see [docs/CONFIG.md](docs/CONFIG.md)).
 
 </details>
 
@@ -380,73 +381,103 @@ Installing numguard registers a pytest plugin (`pytest11` entry point). Use it t
 
 ```bash
 pytest --numguard-modules mypkg.ops,mypkg.stats
-pytest --numguard-dtypes float16,float32 --numguard-large-n 1000000
+pytest --numguard-dtypes float16,float32 --numguard-large-n 1000000 --numguard-backend torch
 ```
 
-`numguard_modules` can also be set in `[tool.pytest.ini_options]`. In CI, set `pytest: true` in the check workflow to run your suite with the plugin and put its numguard failures on the card.
+`numguard_modules` can also be set in `[tool.pytest.ini_options]`. In CI, add a `[pytest]` table to `numguard.toml` and `numguard check --config` runs your suite with the plugin active and puts the pass/fail counts on the card.
 
 ## Config file
 
-`numguard.toml` lists functions to check without touching their source, which is what CI uses. `numguard check --config numguard.toml` runs every target; `numguard init` writes a commented starting point.
+`numguard.toml` lists functions to check without touching their source, which is what CI uses. `numguard check` reads `./numguard.toml` (or `--config FILE`; `--target NAME` runs one target). `numguard init` writes this commented starting point ([`examples/numguard.toml`](examples/numguard.toml), header trimmed):
 
 ```toml
-[defaults]                                  # optional, applies to every target
+# [defaults]                                # applied to every target
+# dtypes = ["float32", "float64"]
+
+# [[target]]
+# name = "logsumexp"
+# function = "mypkg.ops:logsumexp"          # or "path/to/file.py:logsumexp"
+# inputs = ["any"]                          # one domain per positional argument
+# properties = ["translation_equivariant"]
+# reference = "special.logsumexp(x)"        # an expression over the argument names
+# reference_precision = "float64"           # or "longdouble", or "mpmath" (elementwise)
+# nan = "propagate"                         # NaN in -> NaN out
+# allow_nonfinite = []                      # cases where inf/NaN is the right answer
+# backend = "numpy"                         # or "torch", "jax", "cupy"
+
+# [pytest]                                  # also run pytest (the numguard plugin is active)
+# args = ["tests"]
+
+[agent]                                     # experimental suggested fixes (numguard-agent.yml)
+enabled = true
+# rounds = 3                                # refinement rounds for local `numguard fix`
+# max_targets = 3                           # failing targets per pull request
+# timeout = 120                             # seconds per sandboxed check run
+```
+
+A filled-in version, which is what produced the [card below](#github-integration):
+
+```toml
+[defaults]
 dtypes = ["float32", "float64"]
-backend = "numpy"
-seed = 0
 
 [[target]]
+name = "logsumexp"
 function = "mypkg.ops:logsumexp"
-inputs = { x = "any" }                      # domain per argument
-reference = "scipy.special.logsumexp"       # expression over numpy, scipy, math, mpmath
+inputs = ["any"]
 properties = ["translation_equivariant"]
-rtol = { float32 = 1e-5, float64 = 1e-12 }
+reference = "special.logsumexp(x)"
 
 [[target]]
 function = "mypkg.ops:log1p"
-domain = "(-1, inf)"
-highprec = "lambda x: mpmath.log1p(x)"      # mpmath reference at high precision
+inputs = ["(-1, inf)"]
+reference = "np.log1p(x)"
+reference_precision = "longdouble"
 monotonic = "increasing"
-dtypes = ["float16", "float32", "float64"]
-
-[[target]]
-function = "mypkg.quant:quantize_dynamic"
-inputs = { x = "any" }
-allow_nonfinite = ["nonfinite_input"]
-fp_signals = "fail"
 ```
 
-Every key of [`check()`](#checks) can appear in a `[[target]]` table. Reference expressions are compiled in a restricted namespace that contains only `numpy` (`np`), `scipy.special`, `math` and `mpmath`. In the GitHub workflow **the file is read from the PR's base commit**, so a pull request cannot loosen its own checks.
+- **`reference`** is a Python *expression* over the function's argument names (`"special.logsumexp(x)"`, `"np.hypot(x, y)"`, `"mpmath.log1p(x)"`), checked statically and evaluated with only `np`, `math`, `special` (`scipy.special`) and `mpmath` available. `reference_precision` is `float64` (default), `longdouble`, or `mpmath` (elementwise, 50 digits). `reference_function = "module:function"` names a trusted callable instead.
+- **Every other key** means the same as the `numguard.check()` argument of the same name: `inputs` (one domain or `{ name, domain, shape, dtype }` table per positional argument), `dtypes`, `properties`, `rtol`/`atol` (a number or a per-dtype table), `nan`, `allow_nonfinite`, `bounds`, `monotonic`, `batched`, `fp_signals`, `backend`, and so on.
+- **`[pytest]`** (`args`, `timeout`, `enabled`) also runs pytest; **`[agent]`** (`enabled`, `rounds`, `max_tool_calls`, `max_targets`, `timeout`) configures the [agent](#agent-experimental).
+- **Validation is strict.** An unknown key, wrong type or unknown value is an error that names the table and key, and keys that look like secrets (`api_key`, `token`, ...) are refused.
+
+In the GitHub workflow **the file is read from the PR's base commit**, so a pull request cannot loosen its own checks. Every key is documented in [docs/CONFIG.md](docs/CONFIG.md).
 
 ## Backends
 
-Cases are always generated in NumPy. With `backend="torch"`, `"jax"` or `"cupy"` (CLI: `--backend`, config: `backend =`), numguard converts each input to the backend's array type (through DLPack where possible), calls your function, and converts the outputs back with `np.asarray` before checking. `bfloat16` is available as a dtype when [`ml_dtypes`](https://github.com/jax-ml/ml_dtypes) is importable.
+Cases are always generated, and results always compared, in NumPy. With `backend="torch"`, `"jax"` or `"cupy"` (CLI `--backend`, config `backend =`, pytest `--numguard-backend`), an adapter converts each input to the backend's arrays before the call and converts the outputs back (`np.from_dlpack` / `np.asarray`), recording each output's backend dtype for the `dtype` check. The reference is always called with NumPy arrays.
 
-| backend | status |
+| backend | notes |
 |---|---|
-| `numpy` | default; tested in CI |
-| `torch`, `jax`, `cupy` | supported if installed; the adapter is tested against a fake backend module, not against the real libraries in CI |
+| `numpy` | default |
+| `torch` | CPU tensors by default; `NUMGUARD_TORCH_DEVICE=cuda` moves them to a GPU. In-place modification of inputs is detected. |
+| `jax` | arrays are immutable, so `mutation` always passes; without `JAX_ENABLE_X64=1` the `dtype` check reports float64 cases that silently became float32 |
+| `cupy` | GPU arrays; no bfloat16 |
 
-Device placement, gradients and backend-specific dtypes such as `float8` are not covered yet (see the [roadmap](#roadmap)).
+These libraries are optional and not installed with numguard. numguard's own tests exercise the adapters with fake `torch` and `jax` modules; the real libraries are not part of its CI.
+
+**bfloat16.** `dtypes = ["bfloat16"]` builds cases from bfloat16's own limits (max about 3.39e38, eps 2^-7) and hands them to the function as `torch.bfloat16`, `jax.numpy.bfloat16` or, on the NumPy backend, `ml_dtypes.bfloat16` arrays (`pip install "numguard[bfloat16]"`). Default rtol is 6e-2 and ULPs are counted in bfloat16 units.
 
 ## Hypothesis strategies
 
-If you already use [Hypothesis](https://hypothesis.readthedocs.io/), `numguard.strategies` gives it numguard's catalogue: draws come from the named edge cases as well as random arrays, constrained to the declared domain and dtype. Install with `numguard[hypothesis]`; the module imports Hypothesis lazily, so numguard itself does not depend on it.
+If you already use [Hypothesis](https://hypothesis.readthedocs.io/), `numguard.strategies` turns a numguard spec into strategies (`pip install "numguard[hypothesis]"`; numguard itself does not depend on Hypothesis):
 
 ```python
 from hypothesis import given
-import numguard.strategies as ngs
+import numguard.strategies as ngst
 
-@given(ngs.arrays(dtype="float32", domain="(-1, inf)"))
-def test_log1p_monotone_and_finite(x):
-    ...
-
-@given(ngs.inputs_for(logsumexp))          # uses the function's @numguard.guard spec
-def test_logsumexp_matches_scipy(args):
+@given(ngst.inputs_for(my_softmax, dtypes=["float32"]))
+def test_softmax_sums_to_one(args):
+    (x,) = args
     ...
 ```
 
-This keeps Hypothesis's shrinking and its database of past failures, and adds the inputs numerical code tends to get wrong.
+- `cases(target, **spec)` draws `numguard.Case` objects (name, kind, tags, fresh copies of the arrays) from the catalogue;
+- `edge_cases(...)` draws argument tuples from the catalogue;
+- `random_inputs(..., min_size=0, max_size=32)` draws random in-domain arrays (no NaN or infinities);
+- `inputs_for(...)` draws from both.
+
+`target` is a `numguard.Spec`, a function decorated with `@numguard.guard`, or a function plus the keyword arguments of `numguard.check`. You keep Hypothesis's shrinking and example database and add the inputs numerical code tends to get wrong.
 
 ## The bug corpus
 
@@ -549,69 +580,86 @@ Three commands use an LLM. All three are **off unless you call them**, need your
 
 | command | the model writes | numguard then |
 |---|---|---|
-| `numguard suggest` | a spec: domains, dtypes, properties, a reference, tolerances | runs the spec; flags the reference as *suspect* if it disagrees with your function on benign inputs |
-| `numguard fix` | a rewrite of a failing function, same signature | verifies it in a sandboxed subprocess against every check; accepts it only if all of them pass |
-| `numguard bench` | solutions to the 12 corpus tasks | grades them with `numguard eval` and prints a leaderboard row |
+| `numguard suggest` | a spec: domains, dtypes, properties, a reference expression, options | validates it, runs it in a subprocess, and flags the reference as *suspect* if it disagrees with your function on benign inputs |
+| `numguard fix` | a rewrite of a failing function, same name and signature | refuses denylisted code, runs the rewrite in a subprocess against every check, and accepts it only if it is verified |
+| `numguard bench` | `solution.py` for each corpus task | statically checks it, grades it with `numguard eval` in a subprocess, and prints a leaderboard row |
 
 <p align="center">
-  <img src="docs/assets/agent-fix-loop.svg" alt="The fix loop: from the failing checks, the model proposes a same-signature rewrite with read-only tools and a schema-checked submit call, holding the API key and executing nothing. A static gate parses it, checks the signature and rejects dangerous imports and calls. The rewrite then runs in a subprocess with a timeout, a scrubbed environment and no key, and is accepted only if it passes every check the original failed, introduces no new failures, matches the reference or the original on benign inputs, and keeps dtype and shape behaviour. Accepted: a unified diff and before/after table, applied only with --apply. Otherwise the new failure table goes back to the model, up to three rounds, then no verified fix." width="880">
+  <img src="docs/assets/agent-fix-loop.svg" alt="The fix loop: from the failing checks, the model proposes a same-signature rewrite with read-only tools and a schema-checked submit call, holding the API key and executing nothing. A static gate allows imports only from numpy, math, scipy, mpmath and a few standard math modules and refuses open, eval, exec, compile, __import__ and dunder names. The rewrite then runs in a subprocess with a timeout, a scrubbed environment and no key, and is accepted only if it passes every check the original failed, introduces no new failures, agrees with the original on benign cases it passed, and keeps the signature, output shapes and dtypes. Accepted: a unified diff and before/after table, applied only with --apply. Otherwise the failure table goes back to the model, up to three rounds locally and one in CI." width="880">
 </p>
 
-Configure the model through environment variables (never a config file):
+Configure the model through environment variables (never a config file); each command also takes `--provider`, `--model`, `--base-url` and `--reasoning-effort`:
 
 ```bash
-export NUMGUARD_LLM_PROVIDER=anthropic          # or openai (any OpenAI-compatible endpoint)
+export NUMGUARD_LLM_PROVIDER=anthropic          # or openai (any OpenAI-compatible chat-completions server)
 export NUMGUARD_LLM_API_KEY=...                 # stripped from every subprocess numguard starts
 export NUMGUARD_LLM_MODEL=...                   # required; there is no default model
-# optional: NUMGUARD_LLM_BASE_URL, NUMGUARD_LLM_REASONING_EFFORT
+# optional: NUMGUARD_LLM_BASE_URL, NUMGUARD_LLM_REASONING_EFFORT,
+#           NUMGUARD_LLM_PRICE_IN / NUMGUARD_LLM_PRICE_OUT (USD per million tokens, for a cost estimate)
 ```
 
-The client supports the Anthropic Messages API and OpenAI-compatible chat completions, with retries and token and cost accounting. Two provider quirks: OpenAI's GPT-6 Luna only calls tools through Chat Completions with `NUMGUARD_LLM_REASONING_EFFORT=none`, and GPT-6 models reject `temperature` unless reasoning is off.
+The client speaks the Anthropic Messages API and OpenAI-compatible chat completions, retries rate limits with backoff, and reports token usage after every run. Two provider quirks: OpenAI's GPT-6 Luna only calls tools through Chat Completions with `NUMGUARD_LLM_REASONING_EFFORT=none`, and GPT-6 models reject `temperature` unless reasoning is off (numguard sends none).
+
+The model's tools are read-only (`read_function`, `show_failures`, `read_file`, `list_files`, `grep`, `list_catalogue`) and confined to the repository root; repository text reaches the model inside random per-session delimiters as data, and its only output is a schema-validated submit call.
 
 ### `numguard suggest`
 
 ```bash
-numguard suggest mypkg.ops:logsumexp --write specs/logsumexp_spec.py
+numguard suggest mypkg.ops:logsumexp                          # print a decorator, a [[target]] and the report
+numguard suggest mypkg.ops:logsumexp --write numguard.toml    # append the [[target]]
+numguard suggest mypkg.ops:logsumexp --write specs/test_logsumexp_spec.py
 ```
 
-The model gets read-only tools: the function's source and docstring, call sites and tests found by searching the repository, and the lists of numguard domains, properties and reference helpers. Its only output is a submit call validated against a strict schema. numguard compiles the reference in a restricted namespace (`numpy`, `scipy.special`, `math`, `mpmath` only) and runs the spec. **If the reference disagrees with your function on benign random inputs, numguard marks the reference as suspect instead of reporting bugs**: a wrong reference is more likely than a function that is wrong everywhere. Output: a ready-to-paste `@numguard.guard(...)` decorator (or spec file with `--write`) plus the check report.
+The model reads the function, its call sites and tests, and numguard's catalogue, then submits a spec. numguard validates it with the same strict validator as `numguard.toml` and runs it in a subprocess. **If the reference disagrees with your function on benign inputs** (`random`, `ones`, `sorted`, ...), numguard can't tell which one is wrong: the model gets another round (`--rounds`, default 2), and if the disagreement stays, the reference is reported as **suspect**, its disagreements are *not* reported as bugs, and the spec is re-run without it. Output: a ready-to-paste `@numguard.guard(...)` decorator, a `[[target]]` table and the check report. Exit 0: spec found and checks pass; 1: checks fail; 3: no usable spec. Review a suggested spec before relying on it: a permissive spec hides bugs.
 
 ### `numguard fix`
 
 ```bash
-numguard fix mypkg.ops:logsumexp --rounds 3            # prints a diff; changes nothing
-numguard fix mypkg.ops:logsumexp --spec specs/logsumexp_spec.py --apply
+numguard fix mypkg.ops:logsumexp                               # spec from ./numguard.toml or @numguard.guard; prints a diff
+numguard fix mypkg.ops:logsumexp --spec specs/test_logsumexp_spec.py --rounds 3 --apply
 ```
 
-In the spirit of Herbie, but verified by execution rather than by search: when checks fail, the model proposes a rewrite, and numguard runs it in a subprocess with a timeout, a scrubbed environment and a static denylist. A rewrite is accepted only if it
+In the spirit of Herbie, but verified by execution rather than by search. The spec comes from `--spec` (a spec file written by `suggest`, or a `numguard.toml`), `--config`, the matching target of `./numguard.toml`, or the function's `@numguard.guard`. The model sees the source, spec and failure table and submits a rewrite; a static denylist refuses it before anything runs if it imports anything outside `numpy`, `math`, `scipy`, `mpmath` and a few standard math modules, or uses `open`, `eval`, `exec`, `compile`, `__import__` or dunder names. The rewrite then runs in a subprocess worker, side by side with the original, and is **verified** only if
 
-- passes **every** check the original failed,
-- introduces **no new** failures,
-- matches the reference (or the original function on benign inputs) within tolerance, and
-- keeps the original's dtype and shape behaviour.
+- its signature is identical,
+- every (check, case, dtype) result that failed for the original now passes,
+- no result fails that did not fail before,
+- on benign cases where the original passed every check, it agrees with the original (within 4x the comparison tolerance), and
+- output shapes and dtypes are unchanged on those cases.
 
-Otherwise the new failure table goes back to the model for another round, up to `--rounds` (default 3). The result is a unified diff and a before/after table. **Files change only with `--apply`.**
+Otherwise the reasons and the new failure table go back to the model, up to `--rounds` (default `[agent] rounds`, else 3). The result is the status, the reasons, a before/after table of failing results per check and a unified diff. **Files change only with `--apply`, and only for a verified rewrite.**
 
 ### `numguard bench`
 
 ```bash
-numguard bench --model my-model-id --tasks logsumexp,softmax,hypot --out-dir runs/my-model
+numguard bench --model my-model-id --tasks logsumexp,softmax,hypot
+numguard bench --model my-model-id --task logsumexp --task hypot --out-dir runs/my-model --json-out bench.json
 ```
 
-Sends each task's `task.md` to the model (no tools), saves `solution.py` per task, then runs the normal eval. It prints a leaderboard row (model, pass@1 over the tasks, happy-path pass rate, per-task failure reasons) and writes JSON.
+Sends each task's `task.md` to the model (no tools), statically checks each `solution.py` (a denylisted one is refused and never run), and grades it with `numguard eval` in a subprocess with a timeout. It prints a per-task table (`pass`, `fail`, `error`, `refused`, `no_submission`), a Markdown leaderboard row `| model | pass@1 | happy-path | failures |` and JSON. Solutions go to `--out-dir` (default `numguard-bench/<model>`).
 
-**Be realistic about it.** We have not published `bench` results for any model, and we have not measured how often `fix` finds a verified rewrite: there are no agent numbers in this README because none were measured. A rewrite that passes verification has passed numguard's cases, not been proven correct; review it like any other patch. The corpus has 12 tasks, which is enough to show differences between a naive and a careful implementation, and far too few to rank models with confidence.
+### In CI
+
+The agent workflow splits `fix` into `numguard agent propose` (holds the key, reads the PR as data, never installs or runs it) and `numguard agent verify` (no secrets, runs the rewrites against the checks). Because refinement needs execution feedback and the executing job must not hold the key, **CI does one proposal round per failing target**, for up to `[agent] max_targets` (default 3) targets. A verified rewrite appears on the card as a collapsible "suggested fix (verified)" diff; nothing is committed.
+
+**Be realistic about it.** We have not published `bench` results for any model, and we have not measured how often `suggest` or `fix` produce something useful: there are no agent numbers in this README because none were measured. "Verified" is relative to the spec and to numguard's cases; it is not a proof of correctness, so review a rewrite like any other patch. The corpus has 12 tasks, enough to separate naive from careful implementations and far too few to rank models with confidence. Details: [docs/AGENT.md](docs/AGENT.md).
 
 ## GitHub integration
 
-The check workflow runs `numguard check --config numguard.toml` (and pytest with the plugin, if enabled), writes a Markdown **card** to the job summary, and uploads `result.json`, `card.md` and the PR number as an artifact. The privileged comment workflow turns that into one sticky PR comment.
+The check workflow runs `numguard check --config` (plus pytest when `numguard.toml` has a `[pytest]` table), writes a Markdown **card** to the job summary, and uploads `result.json`, `card.md`, the PR number and head SHA as the `numguard-result` artifact. The privileged comment workflow validates the artifact, re-renders the card and upserts one sticky PR comment.
+
+<p align="center">
+  <img src="docs/images/numguard-card.png" alt="A real numguard card: numguard: 2 of 2 targets fail numerical edge-case checks. A table lists logsumexp (46 cases, failing checks finite and reference, 16 failing results) and log1p (44 cases, reference, 6 failing results). The expanded logsumexp section names the function and the reference expression special.logsumexp(x) and shows the failure table: inf where the reference is 1.40244e+38, 1.43262e+20, 46345.6 and 2.08048e+37, each with an overflow signal." width="760">
+  <br><sub>A real card: <code>numguard check --config numguard.toml --card-out card.md</code> on the two-target example from <a href="#config-file">Config file</a>, rendered the way GitHub shows it.</sub>
+</p>
 
 | Section | What it shows |
 |---|---|
-| **Verdict** | One line: all targets pass, or how many targets and checks fail. With `labels: true` the PR gets a matching `numguard:` label. |
-| **Failures** | Per target, the same table as the CLI: check, case, dtypes, relative error, ULPs, detail. Long tables are capped. |
-| **Suggested fix (verified)** | Only when the agent ran and a rewrite passed verification: a collapsible unified diff and before/after table. |
-| **Data block** | Invisible: a `<!-- numguard:data {...} -->` comment with the verdict and counts as JSON, built from validated fields only (escaped and size-capped), for bots and scripts. |
+| **Verdict** | One line, e.g. *2 of 2 targets fail numerical edge-case checks*. With `labels: true` the PR gets `numguard: pass`, `numguard: fail` or `numguard: error`. |
+| **Targets** | One row per target: status, number of cases, failing checks, number of failing results; plus the pytest counts when `[pytest]` ran. |
+| **Failures** | A collapsible section per failing target with the same table as the CLI: check, case, dtypes, relative error, ULPs, detail. |
+| **Suggested fixes** | Only when the agent workflow ran: a collapsible "suggested fix (verified)" diff per target. |
+| **Data block** | Invisible: a `<!-- numguard:data {...} -->` comment with the status, per-target counts and checks as JSON, built from validated fields only (escaped, capped at 4000 characters). Read it with `numguard.carddata.parse_card_data`. |
 
 ## Security model
 
@@ -622,9 +670,9 @@ Running a pull request's code next to a token or an API key is the dangerous par
 </p>
 
 - **PR code runs only in jobs without secrets.** The check job runs on `pull_request` with `contents: read`, `persist-credentials: false`, timeouts, and `numguard.toml` read from the **base** commit. The agent's verify job has no secrets either.
-- **The LLM key never meets PR code.** The propose job reads files as data and never installs, imports or runs them. The model's tools are read-only and its only output is a schema-validated submit call. Untrusted text (source, docstrings, reports) is delimited as data in prompts.
-- **Model-written code is never trusted.** It runs in a subprocess with a timeout, an environment with secret-looking variables removed, and a static denylist (imports of `os`, `subprocess`, `socket`, `shutil`, `ctypes`, `importlib`; `eval`, `exec`, `__import__`; `open(...)` for writing). Only the re-checked outcome counts.
-- **The privileged comment job never checks out or executes PR code.** It validates `result.json` strictly, re-renders the card from validated data (the uploaded `card.md` is ignored), and escapes everything PR-derived.
+- **The LLM key never meets PR code.** A gate job (no checkout, no key) decides whether the agent runs at all. The propose job reads files as data and never installs, imports or runs them; the model's tools are read-only and its only output is a schema-validated submit call. Untrusted text (source, docstrings, reports) is delimited as data in prompts. The verify job treats the propose job's output as untrusted too.
+- **Model-written code is never trusted.** It is statically checked first (imports only from `numpy`, `math`, `scipy`, `mpmath` and a few standard math modules; no `open`, `eval`, `exec`, `compile`, `__import__` or dunder names), then run only in a subprocess with a timeout and an environment with secret-looking variables (`*TOKEN*`, `*KEY*`, `NUMGUARD_LLM_*`, ...) removed. Only the re-checked outcome counts.
+- **The privileged comment job never checks out or executes PR code.** It installs numguard into an isolated virtualenv, validates `result.json` strictly and the triggering run's head SHA, re-renders the card from validated data (the uploaded `card.md` is ignored), escapes everything PR-derived, and warns when the PR changes workflows, `numguard.toml`, `pyproject.toml` or `conftest.py`.
 - **Never `pull_request_target` together with a checkout of the PR head.** That pattern runs attacker code with a write token and your secrets. The repository's own tests check the shipped workflows for it, for secrets in PR-code jobs, for `${{ github.event.* }}` interpolated into `run:` steps, and for minimal permissions.
 
 The subprocess denylist is a speed bump, not a sandbox: Python can reach most things in many ways. The real isolation on GitHub is the job split. Locally, `numguard fix` runs the candidate in a subprocess on your machine; run it in a container if you don't trust the model. A malicious PR can still tamper with its own results inside the unprivileged job. See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) and [docs/AGENT.md](docs/AGENT.md).
@@ -641,31 +689,27 @@ Different tools answer different questions. This is our best reading of each as 
 | High-precision oracle | Yes (arbitrary precision) | Bring your own | Bring your own | Task-specific | Optional: mpmath or long double |
 | Error in ULPs | Bits of error | No | `assert_array_max_ulp` | No | Max relative error and ULPs per case |
 | Minimal failing input | n/a | **Yes, shrinking** | n/a | n/a | No: cases are fixed and small |
-| Rewrites code | **Yes, its core feature** | No | No | No | Experimental agent; accepted only if every check passes |
+| Rewrites code | **Yes, its core feature** | No | No | No | Experimental agent; a rewrite counts only once verified |
 | Runs in pytest / CI | No (standalone tool and web UI) | Yes | Yes | No | Yes, plus a PR card |
 | Grades AI coding agents | No | No | No | **Yes, at scale** | 12-task corpus |
 
 These tools are complementary. Herbie's search-based rewriting with a real accuracy measure is far more principled than an LLM proposing a fix; if your hot path is a scalar expression, try Herbie first. Hypothesis is better at finding *new* failing inputs and shrinking them; `numguard.strategies` exists so you can use both. `numpy.testing` is what numguard's own comparisons are built on. Benchmarks such as SciCode measure models on many problems; numguard's 12-task corpus is a small, targeted complement, not a substitute.
 
-**numguard's own gaps:** no shrinking and no search beyond its catalogue and seeded random inputs; no proofs; the corpus is small; backends other than NumPy are not exercised against the real libraries in CI; agent rewrites are LLM proposals filtered by tests, not synthesized with an accuracy guarantee.
+**numguard's own gaps:** no shrinking and no search beyond its catalogue and seeded random inputs; no proofs; the corpus is small; backends other than NumPy are not exercised against the real libraries in CI; agent rewrites are LLM proposals filtered by checks, not synthesized with an accuracy guarantee, and in CI they get one round.
 
 ## Configuration and CLI reference
+
+The full references are [docs/CONFIG.md](docs/CONFIG.md), [docs/CLI.md](docs/CLI.md) and [docs/GITHUB.md](docs/GITHUB.md). Every command has `--help`.
 
 <details>
 <summary><b><code>numguard.toml</code> keys</b></summary>
 
-| key | where | meaning |
-|---|---|---|
-| `function` | `[[target]]` | `module:function` or `path/to/file.py:function` (required) |
-| `inputs`, `domain` | `[[target]]` | per-argument domains, or one domain for every argument |
-| `dtypes`, `backend`, `seed`, `n`, `large_n` | both | what to generate and where to run it |
-| `reference` | `[[target]]` | expression over `np`, `scipy.special`, `math`, `mpmath` that evaluates to a callable |
-| `highprec` | `[[target]]` | an mpmath lambda used as a high-precision reference |
-| `properties`, `batched`, `monotonic`, `bounds` | `[[target]]` | invariants to check |
-| `rtol`, `atol` | both | numbers, or tables keyed by dtype |
-| `nan`, `allow_nonfinite`, `may_raise`, `fp_signals`, `include`, `exclude`, `ignore` | both | as in `check()` |
-
-`[defaults]` holds values shared by every target; a target's own keys win.
+| table | keys |
+|---|---|
+| `[defaults]` | any `[[target]]` key, merged into every target |
+| `[[target]]` | `function` (required), `name`, `description`, `inputs`, `domain`, `dtypes`, `properties`, `reference`, `reference_precision`, `reference_function`, `rtol`, `atol`, `nan`, `finite`, `allow_nonfinite`, `may_raise`, `exclude`, `include`, `ignore`, `bounds`, `monotonic`, `monotonic_arg`, `batched`, `batch_axis`, `fp_signals`, `out_dtype`, `check_mutation`, `kwargs`, `n`, `large_n`, `seed`, `ref_upcast`, `extra_cases`, `backend` |
+| `[pytest]` | `args`, `timeout`, `enabled` |
+| `[agent]` | `enabled` (default `false`), `rounds` (3), `max_tool_calls` (25), `max_targets` (3), `timeout` (120 s) |
 
 </details>
 
@@ -674,11 +718,15 @@ These tools are complementary. Herbie's search-based rewriting with a real accur
 
 | Variable | Purpose |
 |---|---|
-| `NUMGUARD_LLM_PROVIDER` | `anthropic` (Messages API) or `openai` (any OpenAI-compatible chat endpoint) |
-| `NUMGUARD_LLM_API_KEY` | API key. Never read from config files; stripped from every subprocess. |
+| `NUMGUARD_LLM_PROVIDER` | `anthropic` (Messages API) or `openai` (any OpenAI-compatible chat-completions server) |
+| `NUMGUARD_LLM_API_KEY` | API key (not needed for a `http://localhost` base URL). Never read from config files; stripped from every subprocess. |
 | `NUMGUARD_LLM_MODEL` | Model id. **Required**; there is no default. |
-| `NUMGUARD_LLM_BASE_URL` | Optional custom endpoint |
-| `NUMGUARD_LLM_REASONING_EFFORT` | Optional, OpenAI-compatible only: sent as `reasoning_effort` |
+| `NUMGUARD_LLM_BASE_URL` | Optional API base URL |
+| `NUMGUARD_LLM_REASONING_EFFORT` | Optional, OpenAI-compatible only: sent as `reasoning_effort` (`none` ... `max`) |
+| `NUMGUARD_LLM_PRICE_IN`, `NUMGUARD_LLM_PRICE_OUT` | Optional USD per million input/output tokens, for the cost estimate |
+| `NUMGUARD_TORCH_DEVICE` | Device for the torch backend (default CPU) |
+| `NUMGUARD_CORPUS` | Corpus directory override |
+| `NUMGUARD_DEBUG` | Print tracebacks of target errors in config mode |
 
 </details>
 
@@ -686,35 +734,46 @@ These tools are complementary. Herbie's search-based rewriting with a real accur
 <summary><b>CLI reference</b></summary>
 
 ```text
-numguard check   TARGET [options]                 check one function (exit 1 on failure)
-numguard check   --config numguard.toml [--json]  check every [[target]]
-numguard cases                                    list the edge-case kinds and their tags
-numguard tasks   [--show TASK]                    list corpus tasks, or print one prompt
-numguard eval    --baseline buggy|reference | --candidate-dir DIR
-                 [--task NAME] [--solution-name F] [--json] [--json-out F] [--expect pass|fail]
-numguard init    [--agent] [--force] [--ref v1.0.0]
-numguard suggest MODULE:FUNC [--write spec.py]                      (agent)
-numguard fix     MODULE:FUNC [--spec FILE] [--rounds 3] [--apply]   (agent)
-numguard bench   --model MODEL [--tasks T1,T2] [--out-dir DIR]      (agent)
+numguard check   [TARGET] [options]           one function, or every [[target]] of ./numguard.toml
+numguard eval    --baseline buggy|reference | --candidate-dir DIR    grade the 12 corpus tasks
+numguard tasks   [--show TASK]                list corpus tasks, or print one prompt
+numguard cases                                list the edge-case kinds and their tags
+numguard summary --json result.json [--out FILE]
+numguard comment --json result.json [--pr N] [--expect-head-sha SHA] [--labels] [--dry-run]
+numguard init    [--repo DIR] [--agent] [--force] [--ref TAG] [--install-command CMD] [--target MODULE:FUNC]
+numguard suggest TARGET [--write spec.py|numguard.toml] [--rounds N]          (agent)
+numguard fix     TARGET [--spec FILE] [--rounds N] [--apply]                   (agent)
+numguard bench   --model MODEL [--task NAME ... | --tasks a,b] [--out-dir DIR] (agent)
+numguard agent propose | verify               the CI split of fix              (agent)
 ```
+
+| Command | What it does |
+|---|---|
+| `check` | Runs the checks. Exit 1 when a target fails (`--fail-on fail\|error\|never`). |
+| `eval` | Grades candidate solutions, or the bundled buggy/reference versions. |
+| `summary` | Validates `result.json` and writes the card to `--out`, `$GITHUB_STEP_SUMMARY` or stdout. Needs no token. |
+| `comment` | Validates `result.json`, re-renders the card, upserts the PR comment and (with `--labels`) the status label. |
+| `init` | Writes the caller workflows and a commented `numguard.toml`. |
+| `suggest`, `fix`, `bench` | The [agent](#agent-experimental) commands. |
+| `agent propose` | (CI) Holds the key, executes nothing from the PR, writes candidate rewrites. |
+| `agent verify` | (CI) No LLM; runs the candidates against the checks and adds the fixes to `result.json`. |
 
 | `check` option | Purpose |
 |---|---|
 | `--ref MODULE:FUNC` | reference implementation |
-| `--dtype D` | dtype to test (repeatable); default float32, float64 |
+| `--dtype D` | `float16`, `float32`, `float64` or `bfloat16` (repeatable); default float32, float64 |
 | `--prop NAME[:VALUE]` | metamorphic property (repeatable) |
-| `--domain D` | domain for every argument: `any`, `positive`, `"[a, b)"`, `"int[0, 255]"`, … |
+| `--domain D` | domain for every argument: `any`, `positive`, `"[a, b)"`, `"int[0, 255]"`, ... |
 | `--nan propagate\|raise\|ignore` | expected NaN behaviour |
 | `--batched`, `--monotonic increasing\|decreasing` | batching and order invariants |
 | `--fp-signals ignore\|fail` | fail on FP signals for finite inputs |
-| `--rtol`, `--atol` | tolerances |
-| `--large-n N`, `--seed N` | size of `large_n`; random seed |
+| `--rtol`, `--atol`, `--large-n N`, `--seed N` | tolerances, size of `large_n`, random seed |
 | `--exclude P`, `--allow-nonfinite P` | case name, kind or tag patterns (repeatable) |
 | `--backend numpy\|torch\|jax\|cupy` | where to run the function |
-| `--config FILE` | run every target in a config file |
-| `--json`, `--max-rows N` | output format |
+| `--config FILE`, `--target NAME`, `--root DIR`, `--no-pytest` | config mode |
+| `--json`, `--json-out FILE`, `--card-out FILE`, `--max-rows N` | output |
 
-If the target has a spec attached with `@numguard.guard`, the CLI uses it and command-line options override it. Everything also works as `python -m numguard …`. The reusable workflows call a few further subcommands for the card and the agent jobs; see [`action.yml`](action.yml).
+If the target has a spec attached with `@numguard.guard`, the CLI uses it and command-line options override it. Everything also works as `python -m numguard ...`.
 
 </details>
 
@@ -744,7 +803,7 @@ Pass a reference: the `finite` check only fails when the reference (rounded to t
 <details>
 <summary><b>Can the agent change my code?</b></summary>
 
-Only `numguard fix --apply` writes files, and only with a rewrite that passed verification. Without `--apply` it prints a diff. On GitHub, a verified rewrite appears as a collapsible diff on the card; nothing is committed.
+Only `numguard fix --apply` writes files, and only with a rewrite that passed verification. Without `--apply` it prints a diff. On GitHub, a verified rewrite appears as a collapsible diff on the card; nothing is committed. `suggest --write` writes the spec file or appends a `[[target]]` you asked for.
 
 </details>
 
@@ -758,7 +817,7 @@ It is a small, hand-written set of 12 bug classes with plausible naive implement
 <details>
 <summary><b>Does it work with PyTorch, JAX or CuPy?</b></summary>
 
-Through the backend adapter, when the library is installed: cases are generated in NumPy, converted in, and outputs converted back. The adapter is tested with a fake backend module; the real libraries are not part of numguard's CI. Reports from real use are welcome.
+Through the backend adapter, when the library is installed: cases are generated in NumPy, converted in, and outputs converted back. The adapters are tested with fake `torch` and `jax` modules; the real libraries are not part of numguard's CI. Reports from real use are welcome.
 
 </details>
 
@@ -776,7 +835,7 @@ So that no single job both runs PR code and holds a secret or a write token. A s
 - `np.longdouble` is plain float64 on Windows and macOS arm64, so "high precision" there needs mpmath.
 - Only floating-point signals that NumPy reports are recorded; other backends may not raise them.
 - `eval` and `bench` import candidate solutions in-process; grade untrusted code in a container.
-- The agent is experimental, its success rate is unmeasured, and a verified rewrite is only as good as the checks it passed.
+- The agent is experimental, its success rate is unmeasured, and a verified rewrite is only as good as the spec and cases it passed. Rewrites replace one module-level Python function; methods, C extensions and multi-file changes are out of scope.
 
 ## Roadmap
 

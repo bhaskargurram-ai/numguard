@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 380" width="1000" height="380" role="img" aria-labelledby="t d">
   <title id="t">numguard fix: propose, verify in a sandbox, accept only if every check passes</title>
-  <desc id="d">The experimental fix loop. It starts from a function whose checks fail. The model reads the source, the failure table and the spec through read-only tools and submits a rewrite with the same signature through a schema-checked submit tool; this step holds the API key and executes nothing. A static gate parses the rewrite, checks the signature and rejects imports of os, subprocess, socket, shutil, ctypes or importlib, eval, exec, __import__ and writing open calls. The rewrite then runs in a subprocess with a timeout and a scrubbed environment that has no secrets. It is accepted only if it passes every check the original failed, introduces no new failures, matches the reference (or the original on benign inputs) within tolerance, and keeps dtype and shape behaviour. Accepted rewrites are shown as a unified diff with a before and after table, and files change only with --apply. Otherwise the new failure table goes back to the model, for up to three rounds by default, after which numguard reports that no verified fix was found.</desc>
+  <desc id="d">The experimental fix loop. It starts from a function whose checks fail. The model reads the source, the failure table and the spec through read-only tools and submits a rewrite with the same signature through a schema-checked submit tool; this step holds the API key and executes nothing. A static gate, before anything runs, allows imports only from numpy, math, scipy, mpmath and a few standard math modules, and refuses open, eval, exec, compile, __import__ and dunder names. The rewrite then runs in a subprocess with a timeout and a scrubbed environment that has no secrets. It is accepted only if it passes every check the original failed, introduces no new failures, agrees with the original on benign cases the original passed, and keeps the signature, output shapes and dtypes. Accepted rewrites are shown as a unified diff with a before and after table, and files change only with --apply. Otherwise the new failure table goes back to the model, for up to three rounds by default (one round in CI), after which the rewrite is rejected and no diff is offered.</desc>
   <style>
     svg { --bg:#ffffff; --edge:#d3dae1; --ink:#1b2329; --muted:#5d6a74; --box:#f5f7f9; --arrow:#7f8b95;
           --teal:#0f6e7a; --pass:#1a7f37; --pass-bg:#e3f6e7; --warn:#9a6700; --warn-bg:#fff6d6;
@@ -50,8 +50,8 @@
 
   <!-- refinement loop -->
   <polyline class="loop" points="880,266 880,296 236,296 236,276" marker-end="url(#varr)"/>
-  <rect class="pill" x="410" y="285" width="300" height="22" rx="11"/>
-  <text class="pt" x="560" y="300" text-anchor="middle">new failure table fed back, up to --rounds (3)</text>
+  <rect class="pill" x="380" y="285" width="360" height="22" rx="11"/>
+  <text class="pt" x="560" y="300" text-anchor="middle">failure table fed back, up to --rounds (3); one round in CI</text>
 
   <!-- 1 failing function -->
   <rect class="box" x="20" y="40" width="140" height="226" rx="10"/>
@@ -83,14 +83,14 @@
   <!-- 3 static gate -->
   <rect class="box" x="366" y="40" width="160" height="226" rx="10"/>
   <text class="h" x="380" y="66">Static gate</text>
-  <text class="li" x="380" y="90">parses, same signature</text>
-  <text class="li" x="380" y="114">rejects imports of</text>
-  <text class="code mono" x="380" y="134">os subprocess</text>
-  <text class="code mono" x="380" y="152">socket shutil</text>
-  <text class="code mono" x="380" y="170">ctypes importlib</text>
-  <text class="li" x="380" y="194">and calls to</text>
-  <text class="code mono" x="380" y="214">eval exec</text>
-  <text class="code mono" x="380" y="232">__import__ open(w)</text>
+  <text class="li" x="380" y="90">before anything runs</text>
+  <text class="li" x="380" y="114">imports only from</text>
+  <text class="code mono" x="380" y="134">numpy math scipy</text>
+  <text class="code mono" x="380" y="152">mpmath + stdlib math</text>
+  <text class="li" x="380" y="176">refuses calls to</text>
+  <text class="code mono" x="380" y="196">open eval exec</text>
+  <text class="code mono" x="380" y="214">compile __import__</text>
+  <text class="li" x="380" y="238">and dunder names</text>
 
   <path class="wire" d="M526 153 L 556 153" marker-end="url(#arr)"/>
 
@@ -103,10 +103,10 @@
   <text class="okl" x="574" y="116"><tspan class="ok">✓</tspan> passes every check the</text>
   <text class="okl" x="588" y="134">original failed</text>
   <text class="okl" x="574" y="158"><tspan class="ok">✓</tspan> no new failures</text>
-  <text class="okl" x="574" y="182"><tspan class="ok">✓</tspan> matches the reference, or</text>
-  <text class="okl" x="588" y="200">the original on benign inputs</text>
-  <text class="okl" x="574" y="224"><tspan class="ok">✓</tspan> same dtype and shape</text>
-  <text class="okl" x="588" y="242">behaviour</text>
+  <text class="okl" x="574" y="182"><tspan class="ok">✓</tspan> agrees with the original on</text>
+  <text class="okl" x="588" y="200">benign cases it passed</text>
+  <text class="okl" x="574" y="224"><tspan class="ok">✓</tspan> same signature, output</text>
+  <text class="okl" x="588" y="242">shapes and dtypes</text>
 
   <!-- fork -->
   <path class="wire" d="M802 153 C 812 153, 810 96, 820 96" marker-end="url(#arr)"/>
@@ -124,7 +124,7 @@
   <text class="warnh" x="838" y="188">any check fails</text>
   <text class="okl" x="838" y="212">try another round;</text>
   <text class="okl" x="838" y="230">after the last one:</text>
-  <text class="okl" x="838" y="248">"no verified fix"</text>
+  <text class="okl" x="838" y="248">rejected, no diff</text>
 
   <!-- job brackets -->
   <polyline class="brk" points="180,320 180,328 526,328 526,320"/>
