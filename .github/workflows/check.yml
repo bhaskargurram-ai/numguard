@@ -1,0 +1,185 @@
+# numguard reusable workflow: run the checks (UNPRIVILEGED zone).
+#
+# Call it from a workflow triggered by `pull_request` (see `numguard init` or
+# examples/workflows/numguard.yml):
+#
+#   jobs:
+#     check:
+#       uses: bhaskargurram-ai/numguard/.github/workflows/check.yml@v1.0.0
+#       with:
+#         numguard-ref: v1.0.0
+#
+# The pull request's code (install hooks, the functions under test, pytest)
+# runs in this job, so it gets a read-only token and no secrets (for fork PRs
+# GitHub enforces that). numguard is installed from its own repository at
+# `numguard-ref` BEFORE any PR code runs, and numguard.toml is read from the
+# PR's BASE commit when it exists there, so a PR cannot weaken its own checks.
+# The result goes to the job summary and the `numguard-result` artifact; the
+# privileged comment workflow (comment.yml) posts it.
+#
+# numguard imports the code under test, so it is installed into the job's
+# Python next to the project (not into an isolated virtualenv): a PR could
+# replace it while installing itself. That only affects this job's own,
+# untrusted output, which the comment workflow validates again.
+#
+# Never call this workflow from `pull_request_target` or `workflow_run`: it
+# executes the pull request's code. The job refuses to run for other events.
+name: numguard check
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: Python used for numguard and the project under test.
+        type: string
+        default: "3.12"
+      install-command:
+        description: Shell command that installs the project under test (runs PR code).
+        type: string
+        default: 'pip install -e ".[dev]" || pip install -e .'
+      config:
+        description: Path of numguard.toml in the repository. Targets are resolved relative to its directory.
+        type: string
+        default: numguard.toml
+      config-from:
+        description: '"base" (default): read the config from the PR''s base commit when it exists there. "head": from the PR.'
+        type: string
+        default: base
+      fail-on:
+        description: "fail | error | never: fail the check when a target fails or errors, only on errors, or never."
+        type: string
+        default: fail
+      numguard-extras:
+        description: Extras installed with numguard (scipy for scipy.special references; mpmath for mpmath ones).
+        type: string
+        default: scipy
+      numguard-ref:
+        description: Tag or commit SHA of numguard to install (keep it equal to the @ref of this workflow).
+        type: string
+        default: v1.0.0
+      numguard-repository:
+        description: Repository numguard is installed from.
+        type: string
+        default: bhaskargurram-ai/numguard
+      timeout-minutes:
+        type: number
+        default: 30
+    outputs:
+      status:
+        description: "pass | fail | error"
+        value: ${{ jobs.check.outputs.status }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Only ever for `pull_request`: no write token, no secrets for forks.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+    outputs:
+      status: ${{ steps.run.outputs.status }}
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0              # the base commit's numguard.toml is read with git show
+          persist-credentials: false  # no token in .git/config for PR code to find
+
+      - name: Check out numguard (trusted tool source, independent of the PR)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.numguard-repository }}
+          ref: ${{ inputs.numguard-ref }}
+          path: .numguard-tool
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install numguard (trusted source, before any PR code)
+        env:
+          EXTRAS: ${{ inputs.numguard-extras }}
+        run: |
+          set -euo pipefail
+          spec="./.numguard-tool"
+          if [[ "$EXTRAS" =~ ^[a-z0-9,_-]+$ ]]; then spec="./.numguard-tool[$EXTRAS]"; fi
+          python -m pip install --quiet --disable-pip-version-check "$spec"
+          mv .numguard-tool "$RUNNER_TEMP/numguard-tool"   # keep the tool's own files out of the checkout
+
+      - name: Select the configuration (base commit first)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CONFIG: ${{ inputs.config }}
+          CONFIG_FROM: ${{ inputs.config-from }}
+        run: |
+          set -euo pipefail
+          case "$CONFIG" in /*|*..*) echo "::error::config must be a relative path inside the repository"; exit 1 ;; esac
+          out="$RUNNER_TEMP/numguard-config.toml"
+          if [ "$CONFIG_FROM" = "base" ] && git cat-file -e "$BASE_SHA:$CONFIG" 2>/dev/null; then
+            git show "$BASE_SHA:$CONFIG" > "$out"
+            echo "numguard: using $CONFIG from the base commit"
+          elif [ -f "$CONFIG" ]; then
+            cp "$CONFIG" "$out"
+            echo "::notice title=numguard::using $CONFIG from the pull request (not present on the base commit)"
+          else
+            echo "::error::$CONFIG not found; run 'numguard init' or set the config input"; exit 1
+          fi
+          {
+            echo "NG_CONFIG=$out"
+            echo "NG_ROOT=$GITHUB_WORKSPACE/$(dirname "$CONFIG")"
+            echo "NG_OUT=$RUNNER_TEMP/numguard-out"
+          } >> "$GITHUB_ENV"
+
+      - name: Install the project under test (runs PR code)
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: |
+          set -euo pipefail
+          eval "$INSTALL_COMMAND"
+
+      - name: Run numguard (runs PR code; no token)
+        id: run
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          FAIL_ON: ${{ inputs.fail-on }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$NG_OUT"
+          status=0
+          python -m numguard check --config "$NG_CONFIG" --root "$NG_ROOT" \
+            --json-out "$NG_OUT/result.json" --card-out "$NG_OUT/card.md" \
+            --pr-number "$PR_NUMBER" --head-sha "$HEAD_SHA" --base-sha "$BASE_SHA" --fail-on "$FAIL_ON" || status=$?
+          if [[ "$PR_NUMBER" =~ ^[0-9]{1,10}$ ]]; then echo "$PR_NUMBER" > "$NG_OUT/pr_number"; fi
+          if [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "$HEAD_SHA" > "$NG_OUT/head_sha"; fi
+          if [ -f "$NG_OUT/result.json" ]; then
+            s="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$NG_OUT/result.json")"
+            if [[ "$s" =~ ^(pass|fail|error)$ ]]; then echo "status=$s" >> "$GITHUB_OUTPUT"; fi
+          fi
+          exit "$status"
+
+      # Works for fork PRs too: no write token is needed for the job summary.
+      - name: Write the card to the job summary
+        if: always() && env.NG_OUT != ''
+        run: |
+          if [ -f "$NG_OUT/result.json" ]; then python -m numguard summary --json "$NG_OUT/result.json"; fi
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numguard-result
+          path: |
+            ${{ runner.temp }}/numguard-out/result.json
+            ${{ runner.temp }}/numguard-out/card.md
+            ${{ runner.temp }}/numguard-out/pr_number
+            ${{ runner.temp }}/numguard-out/head_sha
+          if-no-files-found: ignore
+          retention-days: 7

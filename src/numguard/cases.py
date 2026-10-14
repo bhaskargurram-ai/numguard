@@ -22,6 +22,8 @@ from typing import Callable, Iterable, Sequence, Union
 
 import numpy as np
 
+from .dtypes import BFLOAT16, FLOAT_DTYPES, dtype_name, finfo, nextafter_in, round_bf16, storage_dtype
+
 __all__ = [
     "ANY",
     "FLOAT_DTYPES",
@@ -38,7 +40,6 @@ __all__ = [
     "case_matches",
 ]
 
-FLOAT_DTYPES: tuple[str, ...] = ("float16", "float32", "float64")
 DEFAULT_DTYPES: tuple[str, ...] = ("float32", "float64")
 
 #: Case kinds that produce "ordinary" finite inputs of moderate magnitude.
@@ -243,7 +244,7 @@ class ArraySpec:
 
     @property
     def is_integer(self) -> bool:
-        return self.dtype is not None and np.dtype(self.dtype).kind in "iub"
+        return self.dtype is not None and storage_dtype(self.dtype).kind in "iub"
 
 
 def Array(*shape: Dim, domain: DomainLike = "any", dtype: str | None = None,
@@ -304,11 +305,11 @@ class _Ctx:
     rng: np.random.Generator
     count: int
     baseline: np.ndarray
-    large_n_kind: bool = False
+    dtname: str = ""
 
     @property
-    def fi(self) -> np.finfo:
-        return np.finfo(self.dtype)
+    def fi(self):  # noqa: ANN201 - numguard.dtypes.FInfo
+        return finfo(self.dtname or self.dtype)
 
 
 def _signs(ctx: _Ctx, count: int) -> np.ndarray | None:
@@ -338,7 +339,7 @@ def _magnitude_case(ctx: _Ctx, mags: np.ndarray) -> np.ndarray | None:
 
 
 def _baseline(domain: Domain, dtype: np.dtype, rng: np.random.Generator,
-              count: int) -> np.ndarray:
+              count: int, dtname: str = "") -> np.ndarray:
     """Typical in-domain values (float64 array, later cast)."""
     if domain.integer:
         lo = max(domain.lo, -1000.0)
@@ -356,8 +357,8 @@ def _baseline(domain: Domain, dtype: np.dtype, rng: np.random.Generator,
         if not domain.lo_closed:
             vals = np.where(vals == lo, (lo + hi) / 2, vals)
     if dtype.kind == "f":
-        fi = np.finfo(dtype)
-        vals = np.clip(vals, -float(fi.max), float(fi.max))
+        fmax = finfo(dtname or dtype).max
+        vals = np.clip(vals, -fmax, fmax)
     return vals
 
 
@@ -533,7 +534,7 @@ def _g_boundary(ctx: _Ctx) -> np.ndarray | None:
             if closed:
                 pts.append(b)
             elif not d.integer:
-                pts.append(float(np.nextafter(np.asarray(b, dtype=ctx.dtype), inward)))
+                pts.append(nextafter_in(b, ctx.dtname or ctx.dtype.name, inward))
     if not pts:
         return None
     return np.resize(np.array(pts, dtype=np.float64), ctx.count)
@@ -605,7 +606,8 @@ def _seed_for(seed: int, *parts: object) -> np.random.Generator:
     return np.random.default_rng(words)
 
 
-def _cast(vals: np.ndarray, dtype: np.dtype, shape: tuple[int, ...]) -> np.ndarray:
+def _cast(vals: np.ndarray, dtype: np.dtype, shape: tuple[int, ...],
+          dtname: str = "") -> np.ndarray:
     with np.errstate(all="ignore"):
         if dtype.kind in "iu":
             ii = np.iinfo(dtype)
@@ -615,6 +617,8 @@ def _cast(vals: np.ndarray, dtype: np.dtype, shape: tuple[int, ...]) -> np.ndarr
             out = np.asarray(vals != 0)
         else:
             out = np.asarray(vals, dtype=np.float64).astype(dtype)
+            if dtname == BFLOAT16:
+                out = round_bf16(out)
     return out.reshape(shape)
 
 
@@ -651,8 +655,9 @@ def generate_cases(
         for i, spec in enumerate(inputs)
     ]
     sweeps = any(spec.dtype is None for spec in inputs)
+    dtypes = tuple(dtype_name(d) for d in dtypes)
     if not sweeps:
-        dtypes = (str(np.dtype(inputs[0].dtype)),)
+        dtypes = (dtype_name(inputs[0].dtype),)
     any_symbolic = any(spec.symbolic for spec in inputs)
     multi = len(inputs) > 1
 
@@ -662,8 +667,9 @@ def generate_cases(
     seen: set[tuple] = set()
 
     for dt_name in dtypes:
-        work = np.dtype(dt_name)
-        arg_dtypes = [np.dtype(s.dtype) if s.dtype is not None else work for s in inputs]
+        storage_dtype(dt_name)  # validates the dtype name
+        arg_names_dt = [dtype_name(s.dtype) if s.dtype is not None else dt_name for s in inputs]
+        arg_dtypes = [storage_dtype(n) for n in arg_names_dt]
 
         def sized(kind: str) -> int:
             return {"empty": 0, "single": 1, "pair": 2, "large_n": large_n,
@@ -677,21 +683,21 @@ def generate_cases(
                 spec = inputs[i]
                 count = int(np.prod(spec.resolve_shape(size), dtype=np.int64))
                 rng = _seed_for(seed, "baseline", i, dt_name, size)
-                baselines[key] = _baseline(spec.domain, arg_dtypes[i], rng, count)
+                baselines[key] = _baseline(spec.domain, arg_dtypes[i], rng, count, arg_names_dt[i])
             return baselines[key]
 
         def gen_arg(kind: str, i: int, size: int) -> np.ndarray | None:
             spec = inputs[i]
             count = int(np.prod(spec.resolve_shape(size), dtype=np.int64))
             ctx = _Ctx(spec.domain, arg_dtypes[i], _seed_for(seed, kind, i, dt_name),
-                       count, baseline(i, size))
+                       count, baseline(i, size), arg_names_dt[i])
             if arg_dtypes[i].kind != "f" and not spec.domain.integer:
                 return None
             return KINDS[kind][0](ctx)
 
         def emit(name: str, kind: str, values: list[np.ndarray], size: int) -> None:
             arrays = tuple(
-                _cast(v, arg_dtypes[i], inputs[i].resolve_shape(size))
+                _cast(v, arg_dtypes[i], inputs[i].resolve_shape(size), arg_names_dt[i])
                 for i, v in enumerate(values)
             )
             key = (dt_name,) + tuple((a.dtype.str, a.shape, a.tobytes()) for a in arrays)

@@ -1,0 +1,50 @@
+# numguard's own numguard.toml (dogfooding): the GitHub workflows in
+# .github/workflows/ check these targets on every pull request. The targets
+# are the corpus' reference implementations, so every one should pass.
+# See docs/CONFIG.md for every key.
+
+[defaults]
+dtypes = ["float32", "float64"]
+
+[[target]]
+name = "logsumexp"
+function = "corpus/logsumexp/reference.py:logsumexp"
+inputs = ["any"]
+properties = ["translation_equivariant"]
+reference = "special.logsumexp(x)"
+
+[[target]]
+name = "log1p"
+function = "corpus/log1p/reference.py:log1p"
+inputs = ["(-1, inf)"]
+reference = "np.log1p(x)"
+reference_precision = "longdouble"
+monotonic = "increasing"
+
+[[target]]
+name = "hypot"
+function = "corpus/hypot/reference.py:hypot"
+inputs = [{ name = "x", domain = "any" }, { name = "y", domain = "any" }]
+reference = "np.hypot(x, y)"
+reference_precision = "longdouble"
+properties = ["symmetric", "scale_equivariant:1", "even"]
+nan = "ignore"            # hypot(inf, nan) == inf by IEEE 754
+
+[[target]]
+name = "softmax"
+function = "corpus/softmax/reference.py:softmax"
+reference = "special.softmax(x, axis=-1)"
+properties = ["translation_invariant", "permutation_equivariant"]
+batched = true
+bounds = [0.0, 1.0]
+# scipy.special.softmax raises on [] and returns NaN for +inf inputs; the
+# corpus reference returns [] and a one-hot vector instead (both are choices)
+ignore = ["reference:empty", "reference:posinf"]
+
+[[target]]
+name = "sigmoid"
+function = "corpus/sigmoid/reference.py:sigmoid"
+reference = "special.expit(x)"
+monotonic = "increasing"
+bounds = [0.0, 1.0]
+fp_signals = "fail"

@@ -37,7 +37,7 @@ from .properties import Property
 from .reference import highprec, longdouble, mp_scalar, ulp_distance
 from .report import CheckResult, NumGuardError, Report
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "ANY",

@@ -20,9 +20,10 @@ Two ways to use it:
 
    Each guarded function becomes a test item named ``numguard::<module>::<function>``.
 
-Command-line options ``--numguard-dtypes float16,float32`` and
-``--numguard-large-n 10000`` override the dtypes and large-``n`` size for
-every numguard check in the session.
+Command-line options ``--numguard-dtypes float16,float32``,
+``--numguard-large-n 10000`` and ``--numguard-backend torch`` override the
+dtypes, the large-``n`` size and the array backend for every numguard check
+in the session.
 """
 
 from __future__ import annotations
@@ -66,6 +67,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--numguard-large-n", action="store", type=int, default=None, metavar="N",
         help="Size of the large_n edge case for all numguard checks.",
     )
+    group.addoption(
+        "--numguard-backend", action="store", default=None, metavar="NAME",
+        help="Array backend for all numguard checks: numpy, torch, jax or cupy.",
+    )
     parser.addini("numguard_modules", type="args", default=[],
                   help="Modules whose @numguard.guard functions are collected as tests.")
 
@@ -82,6 +87,9 @@ def _overrides(config: pytest.Config) -> dict[str, Any]:
     large_n = config.getoption("numguard_large_n", default=None)
     if large_n is not None:
         out["large_n"] = int(large_n)
+    backend = config.getoption("numguard_backend", default=None)
+    if backend:
+        out["backend"] = backend
     return out
 
 

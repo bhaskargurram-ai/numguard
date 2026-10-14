@@ -44,7 +44,9 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 import numpy as np
 
+from .backends import BackendCall, wrap
 from .cases import Case, case_matches
+from .dtypes import BFLOAT16, dtype_name, is_float_name, round_bf16
 from .reference import HighPrecReference, default_tolerance, ulp_distance
 from .report import FAIL, PASS, SKIP, CheckResult, Report
 
@@ -72,6 +74,9 @@ class Run:
     fp_events: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     mutated: list[int] = field(default_factory=list)
+    #: dtype name of every output as the function produced it (for backends:
+    #: the backend dtype, e.g. ``bfloat16``, before conversion to NumPy).
+    out_dtypes: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -119,6 +124,10 @@ def call(fn: Callable[..., Any], args: Sequence[np.ndarray],
             try:
                 raw = fn(*work, **(kwargs or {}))
                 run.outputs, run.weak = _normalize(raw)
+                names = fn.last_out_dtypes() if isinstance(fn, BackendCall) else None
+                if names is None or len(names) != len(run.outputs):
+                    names = [o.dtype.name for o in run.outputs]
+                run.out_dtypes = list(names)
             except Exception as exc:  # noqa: BLE001 - we report every failure
                 run.error = exc
     run.fp_events = sorted({e for e in events if e in FP_SIGNALS})
@@ -146,12 +155,12 @@ class Comparison:
     example: str | None = None
 
 
-def _tol_value(tol: float | Mapping[str, float] | None, dtype: np.dtype,
+def _tol_value(tol: float | Mapping[str, float] | None, dtype: Any,
                default: float) -> float:
     if tol is None:
         return default
     if isinstance(tol, Mapping):
-        return float(tol.get(dtype.name, tol.get("default", default)))
+        return float(tol.get(dtype_name(dtype), tol.get("default", default)))
     return float(tol)
 
 
@@ -186,13 +195,21 @@ def compare(actual: np.ndarray, expected: np.ndarray, *, rtol: Any = None, atol:
         except ValueError:
             return Comparison(False, f"shape {actual.shape} != {label} {expected.shape}", n_bad=1)
     adt = actual.dtype
-    tdt = np.dtype(tol_dtype) if tol_dtype is not None else adt
-    d_rtol, d_floor = default_tolerance(tdt)
-    if adt.kind == "f" and tdt.kind == "f":
+    bf16 = tol_dtype is not None and dtype_name(tol_dtype) == BFLOAT16
+    tdt = np.dtype(np.float32) if bf16 else (np.dtype(tol_dtype) if tol_dtype is not None else adt)
+    d_rtol, d_floor = default_tolerance(BFLOAT16 if bf16 else tdt)
+    if bf16 and adt.kind == "f":
         d_rtol = max(d_rtol, default_tolerance(adt)[0])
         d_floor = max(d_floor, default_tolerance(adt)[1])
-    rt = _tol_value(rtol, tdt, d_rtol) * rtol_factor
-    at = _tol_value(atol, tdt, 0.0)
+        with np.errstate(all="ignore"):
+            # a value beyond bfloat16's range is expected to be +-inf
+            expected = round_bf16(np.asarray(expected, dtype=np.float64).astype(np.float32))
+    elif adt.kind == "f" and tdt.kind == "f":
+        d_rtol = max(d_rtol, default_tolerance(adt)[0])
+        d_floor = max(d_floor, default_tolerance(adt)[1])
+    tol_key = BFLOAT16 if bf16 else tdt
+    rt = _tol_value(rtol, tol_key, d_rtol) * rtol_factor
+    at = _tol_value(atol, tol_key, 0.0)
 
     if adt.kind in "iub" and expected.dtype.kind in "iub":
         diff = np.abs(actual.astype(np.float64) - expected.astype(np.float64))
@@ -240,7 +257,7 @@ def compare(actual: np.ndarray, expected: np.ndarray, *, rtol: Any = None, atol:
     max_rel = float(rel.max()) if rel.size else 0.0
     max_ulp = None
     if cmp_dt.kind == "f" and cmp_dt.itemsize in (2, 4, 8) and a.size:
-        u = ulp_distance(a, e, cmp_dt)
+        u = ulp_distance(a, e, BFLOAT16 if bf16 and cmp_dt == np.float32 else cmp_dt)
         u = np.where(np.isnan(a) | np.isnan(e), np.where(nan_a == nan_e, 0.0, np.inf), u)
         max_ulp = float(u.max())
     ex = None
@@ -309,7 +326,13 @@ def _ref_args(reference: Callable[..., Any], case: Case,
     return tuple(out)
 
 
-def _tol_dtype(out: np.ndarray, weak: bool, case: Case) -> np.dtype:
+def _tol_dtype(out: np.ndarray, weak: bool, case: Case) -> Any:
+    if case.dtype == BFLOAT16:
+        if out.dtype.kind in "iub" and not weak:
+            return out.dtype
+        # outputs of bfloat16 cases are float32 after conversion (or the
+        # function upcast): judge them with bfloat16 tolerances
+        return BFLOAT16 if (weak or out.dtype.kind != "f" or out.dtype.itemsize <= 4) else out.dtype
     case_dt = np.dtype(case.dtype)
     if out.dtype.kind in "iub" and not weak:
         return out.dtype  # integer outputs: exact unless atol keyed by dtype name
@@ -318,6 +341,17 @@ def _tol_dtype(out: np.ndarray, weak: bool, case: Case) -> np.dtype:
     if case_dt.kind == "f" and default_tolerance(case_dt)[0] > default_tolerance(out.dtype)[0]:
         return case_dt
     return out.dtype
+
+
+def _round_like(ref: Any, out: np.ndarray, case: Case) -> np.ndarray:
+    """Round a reference output to the dtype the function's output has (bfloat16-aware)."""
+    r = np.asarray(ref)
+    if out.dtype.kind not in "fc":
+        return r
+    r = r.astype(out.dtype)
+    if case.dtype == BFLOAT16 and out.dtype == np.float32:
+        r = round_bf16(r)
+    return r
 
 
 def _nonfinite_mask(arrs: Sequence[np.ndarray]) -> list[np.ndarray]:
@@ -375,9 +409,7 @@ def _check_case(ctx: _Ctx, fn: Callable[..., Any], case: Case) -> Run:
             # round the reference to each output's dtype: a value beyond the
             # dtype's range is legitimately +-inf in that dtype
             with np.errstate(all="ignore"):
-                ref_masks = _nonfinite_mask([
-                    np.asarray(r).astype(o.dtype) if o.dtype.kind in "fc" else np.asarray(r)
-                    for r, o in zip(ref_outs, outs)])
+                ref_masks = _nonfinite_mask([_round_like(r, o, case) for r, o in zip(ref_outs, outs)])
         problems = []
         for k, m in enumerate(masks):
             if not m.any():
@@ -422,8 +454,7 @@ def _check_case(ctx: _Ctx, fn: Callable[..., Any], case: Case) -> Run:
             with np.errstate(all="ignore"):
                 ref_nonfinite = any(
                     m.any() for m in _nonfinite_mask(
-                        [np.asarray(r).astype(o.dtype) if o.dtype.kind in "fc" else np.asarray(r)
-                         for r, o in zip(ref_outs, outs)]))
+                        [_round_like(r, o, case) for r, o in zip(ref_outs, outs)]))
         if run.fp_events and not ref_nonfinite:
             ctx.add("fp_signals", case, FAIL,
                     f"raised FP signal(s) on finite input: {', '.join(run.fp_events)}", run=run)
@@ -470,26 +501,27 @@ def _check_case(ctx: _Ctx, fn: Callable[..., Any], case: Case) -> Run:
 def _check_dtype(ctx: _Ctx, case: Case, run: Run) -> None:
     spec = ctx.spec
     outs = run.outputs or []
-    case_dt = np.dtype(case.dtype)
+    names = run.out_dtypes if len(run.out_dtypes) == len(outs) else [o.dtype.name for o in outs]
+    case_name = case.dtype
     problems = []
     if spec.out_dtype == "preserve":
-        if case_dt.kind != "f":
+        if not is_float_name(case_name):
             return
-        for k, (o, weak) in enumerate(zip(outs, run.weak)):
+        for k, (o, weak, got) in enumerate(zip(outs, run.weak, names)):
             if weak or o.dtype.kind != "f":
                 continue
-            if o.dtype != case_dt:
-                problems.append(f"output {k}: {o.dtype} (expected {case_dt})" if len(outs) > 1
-                                else f"got {o.dtype}, expected {case_dt}")
+            if got != case_name:
+                problems.append(f"output {k}: {got} (expected {case_name})" if len(outs) > 1
+                                else f"got {got}, expected {case_name}")
     else:
         expected = spec.out_dtype
         exp_list = list(expected) if isinstance(expected, (list, tuple)) else [expected] * len(outs)
-        for k, (o, e) in enumerate(zip(outs, exp_list)):
+        for k, (e, got) in enumerate(zip(exp_list, names)):
             if e is None:
                 continue
-            want = case_dt if e == "preserve" else np.dtype(e)
-            if o.dtype != want:
-                problems.append(f"output {k}: got {o.dtype}, expected {want}")
+            want = case_name if e == "preserve" else dtype_name(e)
+            if got != want:
+                problems.append(f"output {k}: got {got}, expected {want}")
     ctx.add("dtype", case, FAIL if problems else PASS, "; ".join(problems), run=run)
 
 
@@ -651,7 +683,13 @@ def run_checks(fn: Callable[..., Any], spec: "Spec", cases: Sequence[Case],
         if isinstance(spec.reference, HighPrecReference):
             report.reference += f" [{spec.reference.precision}]"
     ctx = _Ctx(spec, report)
+    fn = wrap(fn, spec.backend, report.dtypes)
+    if spec.backend != "numpy":
+        report.backend = spec.backend
     for case in cases:
+        if isinstance(fn, BackendCall):
+            fn.set_case([dtype_name(s.dtype) if s.dtype is not None else case.dtype
+                         for s in spec.inputs] or [case.dtype] * len(case.args))
         run = _check_case(ctx, fn, case)
         if spec.batched and case.regular and case.size >= 1:
             _check_batch(ctx, fn, case, run)

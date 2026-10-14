@@ -1,0 +1,229 @@
+name: numguard
+description: "Numerical edge-case checks for array code: NaN, overflow, precision and dtype bugs, with evidence."
+author: Bhaskar Gurram
+branding:
+  icon: shield
+  color: blue
+
+# Security notes (see docs/SECURITY_MODEL.md):
+# * Every input reaches shell steps through `env:` and is quoted, never
+#   interpolated into the script text with ${{ }} (prevents script injection).
+# * `command: check` and `command: agent-verify` import and run the code under
+#   test: use them only in an unprivileged `pull_request` job with no secrets,
+#   AFTER installing the project. numguard is installed into the job's Python
+#   (it must import your code).
+# * `command: comment` is for the privileged workflow_run job: it never checks
+#   out or runs PR code; it validates result.json and re-renders the card.
+# * `command: summary` renders the card into the job summary (no token).
+# * `command: agent-propose` holds the LLM key: use it only in a job that never
+#   installs or runs PR code (it reads the repository as data). The reusable
+#   .github/workflows/agent.yml already splits the jobs this way.
+
+inputs:
+  command:
+    description: "One of: check, summary, comment, agent-propose, agent-verify."
+    required: false
+    default: check
+  config:
+    description: "check / agent-*: path of numguard.toml."
+    required: false
+    default: numguard.toml
+  root:
+    description: "check / agent-*: directory targets are resolved against (default: the config's directory)."
+    required: false
+    default: ""
+  fail-on:
+    description: "check: fail | error | never"
+    required: false
+    default: fail
+  numguard-extras:
+    description: "check / agent-verify: extras installed with numguard (e.g. scipy, mpmath)."
+    required: false
+    default: scipy
+  output-dir:
+    description: "Directory for result.json, card.md, pr_number and head_sha."
+    required: false
+    default: numguard-out
+  result:
+    description: "summary / comment / agent-*: path to result.json."
+    required: false
+    default: numguard-out/result.json
+  pr-number:
+    description: "comment: pull request number (validated as a positive integer)."
+    required: false
+    default: ""
+  expected-head-sha:
+    description: "comment: only comment if result.json and the PR head match this SHA (use github.event.workflow_run.head_sha)."
+    required: false
+    default: ""
+  labels:
+    description: "comment: 'true' to also set a `numguard: pass|fail|error` label (needs pull-requests: write)."
+    required: false
+    default: "false"
+  github-token:
+    description: "comment: token with pull-requests: write."
+    required: false
+    default: ""
+  candidates-dir:
+    description: "agent-propose / agent-verify: candidates directory."
+    required: false
+    default: numguard-out/candidates
+  repo-dir:
+    description: "agent-propose / agent-verify: directory of the PR checkout."
+    required: false
+    default: "."
+  llm-provider:
+    description: "agent-propose: anthropic | openai."
+    required: false
+    default: ""
+  llm-model:
+    description: "agent-propose: model id (required for the agent; there is no default)."
+    required: false
+    default: ""
+  llm-base-url:
+    description: "agent-propose: optional API base URL."
+    required: false
+    default: ""
+  llm-reasoning-effort:
+    description: "agent-propose: optional reasoning_effort for OpenAI-compatible APIs (e.g. none)."
+    required: false
+    default: ""
+  llm-api-key:
+    description: "agent-propose: API key. Pass a secret; never use it in a job that runs PR code."
+    required: false
+    default: ""
+  numguard-version:
+    description: "Advanced: pip requirement to install instead of this action's own source."
+    required: false
+    default: ""
+
+outputs:
+  status:
+    description: "check: pass | fail | error"
+    value: ${{ steps.check.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install numguard into the job's Python (check / agent-verify import your code)
+      if: inputs.command == 'check' || inputs.command == 'agent-verify'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        NG_REQUIREMENT: ${{ inputs.numguard-version }}
+        EXTRAS: ${{ inputs.numguard-extras }}
+      run: |
+        set -euo pipefail
+        spec="${NG_REQUIREMENT:-$ACTION_PATH}"
+        if [ -z "$NG_REQUIREMENT" ] && [[ "$EXTRAS" =~ ^[a-z0-9,_-]+$ ]]; then spec="$ACTION_PATH[$EXTRAS]"; fi
+        python -m pip install --quiet --disable-pip-version-check "$spec"
+
+    - name: Install numguard (isolated virtualenv)
+      if: inputs.command != 'check' && inputs.command != 'agent-verify'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        NG_REQUIREMENT: ${{ inputs.numguard-version }}
+      run: |
+        set -euo pipefail
+        venv="$RUNNER_TEMP/numguard-venv"
+        if [ ! -x "$venv/bin/numguard" ]; then
+          python3 -m venv "$venv"
+          "$venv/bin/python" -m pip install --quiet --disable-pip-version-check "${NG_REQUIREMENT:-$ACTION_PATH}"
+        fi
+        echo "NUMGUARD_BIN=$venv/bin/numguard" >> "$GITHUB_ENV"
+
+    - name: Run numguard checks (runs the code under test; no token)
+      id: check
+      if: inputs.command == 'check'
+      shell: bash
+      env:
+        NG_CONFIG: ${{ inputs.config }}
+        NG_ROOT: ${{ inputs.root }}
+        NG_FAIL_ON: ${{ inputs.fail-on }}
+        OUT_DIR: ${{ inputs.output-dir }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$OUT_DIR"
+        args=(check --config "$NG_CONFIG" --json-out "$OUT_DIR/result.json" --card-out "$OUT_DIR/card.md" --fail-on "$NG_FAIL_ON")
+        [ -n "$NG_ROOT" ] && args+=(--root "$NG_ROOT")
+        [[ "$PR_NUMBER" =~ ^[0-9]{1,10}$ ]] && args+=(--pr-number "$PR_NUMBER")
+        [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] && args+=(--head-sha "$HEAD_SHA")
+        [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && args+=(--base-sha "$BASE_SHA")
+        status=0
+        python -m numguard "${args[@]}" || status=$?
+        if [[ "$PR_NUMBER" =~ ^[0-9]{1,10}$ ]]; then echo "$PR_NUMBER" > "$OUT_DIR/pr_number"; fi
+        if [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "$HEAD_SHA" > "$OUT_DIR/head_sha"; fi
+        if [ -f "$OUT_DIR/result.json" ]; then
+          s="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$OUT_DIR/result.json")"
+          if [[ "$s" =~ ^(pass|fail|error)$ ]]; then echo "status=$s" >> "$GITHUB_OUTPUT"; fi
+          python -m numguard summary --json "$OUT_DIR/result.json" || true
+        fi
+        exit "$status"
+
+    - name: Write the card to the job summary
+      if: inputs.command == 'summary'
+      shell: bash
+      env:
+        NG_RESULT: ${{ inputs.result }}
+      run: |
+        set -euo pipefail
+        "$NUMGUARD_BIN" summary --json "$NG_RESULT"
+
+    - name: Post or update the numguard card (never runs PR code)
+      if: inputs.command == 'comment'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        NG_RESULT: ${{ inputs.result }}
+        NG_PR: ${{ inputs.pr-number }}
+        NG_HEAD_SHA: ${{ inputs.expected-head-sha }}
+        NG_LABELS: ${{ inputs.labels }}
+      run: |
+        set -euo pipefail
+        if ! [[ "$NG_PR" =~ ^[0-9]{1,10}$ ]]; then
+          echo "::error::pr-number must be a positive integer"; exit 1
+        fi
+        args=(comment --json "$NG_RESULT" --pr "$NG_PR")
+        if [ -n "$NG_HEAD_SHA" ]; then
+          if ! [[ "$NG_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "::error::invalid expected-head-sha"; exit 1; fi
+          args+=(--expect-head-sha "$NG_HEAD_SHA")
+        fi
+        if [ "$NG_LABELS" = "true" ]; then args+=(--labels); fi
+        "$NUMGUARD_BIN" "${args[@]}"
+
+    - name: Propose rewrites of failing functions (holds the LLM key; never runs PR code)
+      if: inputs.command == 'agent-propose'
+      shell: bash
+      env:
+        NUMGUARD_LLM_PROVIDER: ${{ inputs.llm-provider }}
+        NUMGUARD_LLM_MODEL: ${{ inputs.llm-model }}
+        NUMGUARD_LLM_BASE_URL: ${{ inputs.llm-base-url }}
+        NUMGUARD_LLM_REASONING_EFFORT: ${{ inputs.llm-reasoning-effort }}
+        NUMGUARD_LLM_API_KEY: ${{ inputs.llm-api-key }}
+        NG_CONFIG: ${{ inputs.config }}
+        NG_RESULT: ${{ inputs.result }}
+        NG_REPO: ${{ inputs.repo-dir }}
+        NG_CANDIDATES: ${{ inputs.candidates-dir }}
+      run: |
+        set -euo pipefail
+        "$NUMGUARD_BIN" agent propose --config "$NG_CONFIG" --result "$NG_RESULT" --repo "$NG_REPO" --out-dir "$NG_CANDIDATES"
+
+    - name: Verify proposed rewrites (runs PR code and model-written code; use without secrets)
+      if: inputs.command == 'agent-verify'
+      shell: bash
+      env:
+        NG_CONFIG: ${{ inputs.config }}
+        NG_RESULT: ${{ inputs.result }}
+        NG_REPO: ${{ inputs.repo-dir }}
+        NG_CANDIDATES: ${{ inputs.candidates-dir }}
+        OUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$OUT_DIR"
+        python -m numguard agent verify --candidates "$NG_CANDIDATES" --config "$NG_CONFIG" --result "$NG_RESULT" \
+          --repo "$NG_REPO" --json-out "$OUT_DIR/result.json" --card-out "$OUT_DIR/card.md"
+        python -m numguard summary --json "$OUT_DIR/result.json" || true

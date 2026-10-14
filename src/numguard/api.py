@@ -18,7 +18,9 @@ from .cases import (
     case_matches,
     generate_cases,
 )
+from .backends import BACKENDS
 from .checks import run_checks
+from .dtypes import BFLOAT16, dtype_name, round_bf16, storage_dtype, validate_dtype
 from .properties import Property, PropertyLike, parse_property
 from .report import Report
 
@@ -78,6 +80,7 @@ class Spec:
     include: tuple[str, ...] | None = None
     exclude: tuple[str, ...] = ()
     arg_names: tuple[str, ...] = ()
+    backend: str = "numpy"
 
     def __post_init__(self) -> None:
         if self.nan not in _NAN_POLICIES:
@@ -86,8 +89,9 @@ class Spec:
             raise ValueError(f"fp_signals must be one of {_FP_POLICIES}, got {self.fp_signals!r}")
         if self.monotonic not in (None, "increasing", "decreasing"):
             raise ValueError("monotonic must be None, 'increasing' or 'decreasing'")
-        for d in self.dtypes:
-            np.dtype(d)  # validates
+        object.__setattr__(self, "dtypes", tuple(validate_dtype(d) for d in self.dtypes))
+        if self.backend not in BACKENDS:
+            raise ValueError(f"backend must be one of {BACKENDS}, got {self.backend!r}")
 
     def replace(self, **changes: Any) -> "Spec":
         """Return a copy with some fields changed (``None`` values are ignored)."""
@@ -107,7 +111,7 @@ class Spec:
     def _extra_cases(self) -> list[Case]:
         out: list[Case] = []
         sweep = self.dtypes if any(s.dtype is None for s in self.inputs) else (
-            str(np.dtype(self.inputs[0].dtype)),)
+            dtype_name(self.inputs[0].dtype),)
         for name, values in self.extra_cases.items():
             if len(self.inputs) == 1:
                 values = (values,)
@@ -116,9 +120,10 @@ class Spec:
             for dt in sweep:
                 arrays = []
                 for spec_i, v in zip(self.inputs, values):
-                    target = np.dtype(spec_i.dtype) if spec_i.dtype is not None else np.dtype(dt)
+                    tname = dtype_name(spec_i.dtype) if spec_i.dtype is not None else dt
                     with np.errstate(all="ignore"):
-                        arrays.append(np.asarray(v, dtype=np.float64).astype(target))
+                        arr = np.asarray(v, dtype=np.float64).astype(storage_dtype(tname))
+                        arrays.append(round_bf16(arr) if tname == BFLOAT16 else arr)
                 finite = all(np.all(np.isfinite(a)) for a in arrays if a.dtype.kind == "f")
                 has_nan = any(np.isnan(a).any() for a in arrays if a.dtype.kind == "f")
                 tags = {"extra", name, dt, "finite_input" if finite else "nonfinite_input"}
@@ -295,7 +300,10 @@ def check(
     ``extra_cases`` (``{name: arrays}`` of hand-written inputs, cast to each
     dtype under test), ``check_mutation``, ``kwargs``/``ref_kwargs``, ``ref_upcast`` (call a
     plain reference with float64-upcast inputs, default True), ``n``, ``large_n``,
-    ``seed``, ``include``/``exclude``.
+    ``seed``, ``include``/``exclude``, ``backend`` (``"numpy"`` (default),
+    ``"torch"``, ``"jax"`` or ``"cupy"``: inputs are converted to that
+    library's arrays, outputs back to NumPy; see :mod:`numguard.backends`).
+    ``dtypes`` may include ``"bfloat16"`` (emulated; see :mod:`numguard.dtypes`).
     """
     if spec is None:
         spec = make_spec(fn, inputs=inputs, domain=domain, reference=reference,
