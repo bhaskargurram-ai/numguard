@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" width="1000" height="480" role="img" aria-labelledby="t d">
+  <title id="t">Where numguard's edge cases sit on the float32 number line, and where naive formulas break</title>
+  <desc id="d">A logarithmic axis of float32 magnitudes from the smallest subnormal, 1.4e-45, to the largest finite value, 3.4e38. Above the axis are numguard's magnitude cases: subnormal values just above the smallest subnormal, tiny values just above 1.2e-38, small values of 1 to 100 times machine epsilon, random values near 1, the cancellation case near 46341, large values a few times the square root of the maximum, huge values at 25 to 50 percent of the maximum, and a wide_range sweep from tiny to max. Below the axis are the points where naive formulas fail: below 1.2e-38 values lose precision gradually; x times x underflows below about 1.1e-19 (hypot, normalize, std); 1 plus x rounds to 1 below about 6e-8 (log1p); exp of x overflows above 88.7 (logsumexp, softmax, sigmoid); x times x overflows above 1.8e19 (hypot, variance, norms); anything above 3.4e38 is inf. A strip at the bottom lists the cases that are not about magnitude: zeros, negative zero, empty, single, pair, large_n, NaN, plus and minus infinity, duplicates, sorted, alternating, boundary and integer limits.</desc>
+  <style>
+    svg { --bg:#ffffff; --edge:#d3dae1; --ink:#1b2329; --muted:#5d6a74; --box:#f5f7f9;
+          --teal:#0f6e7a; --teal-bg:#dff1f2; --fail:#c8322f; --fail-bg:#fdeceb; --warn:#9a6700; --warn-bg:#fff6d6; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#121a1f; --edge:#2f3b44; --ink:#e3eaee; --muted:#94a1aa; --box:#18232a;
+            --teal:#48b8c4; --teal-bg:#0f2d31; --fail:#ff6f66; --fail-bg:#3a1716; --warn:#d6a23a; --warn-bg:#33270d; }
+    }
+    text { font-family:-apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill:var(--ink); }
+    .mono { font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+    .bg { fill:var(--bg); stroke:var(--edge); }
+    .ttl { font-size:15px; font-weight:650; }
+    .sub { font-size:12.5px; fill:var(--muted); }
+    .axis { stroke:var(--ink); stroke-width:2; }
+    .grid { stroke:var(--edge); stroke-width:1; }
+    .tl { font-size:11.5px; fill:var(--muted); }
+    .subz { fill:var(--warn-bg); }
+    .infz { fill:var(--fail-bg); }
+    .case { fill:var(--teal); }
+    .cl { font-size:12.5px; font-weight:600; fill:var(--teal); }
+    .lead { stroke:var(--teal); stroke-width:1.2; }
+    .brk { fill:none; stroke:var(--teal); stroke-width:1.4; }
+    .bad { stroke:var(--fail); stroke-width:1.4; stroke-dasharray:4 3; }
+    .badm { fill:var(--fail); }
+    .bl { font-size:12.5px; font-weight:650; fill:var(--fail); }
+    .bv { font-size:11.5px; fill:var(--ink); }
+    .bh { font-size:11.5px; fill:var(--muted); }
+    .wl { font-size:12.5px; font-weight:650; fill:var(--warn); }
+    .strip { fill:var(--box); stroke:var(--edge); }
+    .sl { font-size:12.5px; font-weight:650; }
+    .sk { font-size:11px; fill:var(--teal); }
+    .note { font-size:11.5px; fill:var(--muted); }
+  </style>
+
+  <rect class="bg" x="0.5" y="0.5" width="999" height="479" rx="14"/>
+  <text class="ttl" x="24" y="36">float32 magnitudes |x|, log scale</text>
+  <text class="sub" x="24" y="56">Above the line: where numguard puts values. Below: where naive formulas break.</text>
+
+  <rect class="subz" x="81.7" y="202" width="70.6" height="16"/>
+  <rect class="infz" x="932.2" y="202" width="29.8" height="16"/>
+  <text class="tl" x="939.2" y="214" style="fill:var(--fail);font-weight:650">inf</text>
+  <line class="grid" x1="80.2" y1="210" x2="80.2" y2="222"/>
+  <text class="tl" x="80.2" y="236" text-anchor="middle">1e-45</text>
+  <line class="grid" x1="233.2" y1="210" x2="233.2" y2="222"/>
+  <text class="tl" x="233.2" y="236" text-anchor="middle">1e-30</text>
+  <line class="grid" x1="386.2" y1="210" x2="386.2" y2="222"/>
+  <text class="tl" x="386.2" y="236" text-anchor="middle">1e-15</text>
+  <line class="grid" x1="539.2" y1="210" x2="539.2" y2="222"/>
+  <text class="tl" x="539.2" y="236" text-anchor="middle">1</text>
+  <line class="grid" x1="692.2" y1="210" x2="692.2" y2="222"/>
+  <text class="tl" x="692.2" y="236" text-anchor="middle">1e15</text>
+  <line class="grid" x1="845.2" y1="210" x2="845.2" y2="222"/>
+  <text class="tl" x="845.2" y="236" text-anchor="middle">1e30</text>
+  <line class="axis" x1="81.7" y1="210" x2="932.2" y2="210"/>
+  <rect class="case" x="81.7" y="204" width="20.4" height="6" rx="1"/>
+  <line class="lead" x1="91.9" y1="204" x2="91.9" y2="184"/>
+  <text class="cl mono" x="91.9" y="178" text-anchor="middle">subnormal</text>
+  <rect class="case" x="152.3" y="204" width="9.2" height="6" rx="1"/>
+  <line class="lead" x1="156.9" y1="204" x2="156.9" y2="160"/>
+  <text class="cl mono" x="156.9" y="154" text-anchor="middle">tiny</text>
+  <rect class="case" x="468.6" y="204" width="20.4" height="6" rx="1"/>
+  <line class="lead" x1="478.8" y1="204" x2="478.8" y2="184"/>
+  <text class="cl mono" x="478.8" y="178" text-anchor="middle">small</text>
+  <rect class="case" x="529.2" y="204" width="14.0" height="6" rx="1"/>
+  <line class="lead" x1="536.2" y1="204" x2="536.2" y2="160"/>
+  <text class="cl mono" x="536.2" y="154" text-anchor="middle">random</text>
+  <rect class="case" x="584.8" y="204" width="4.0" height="6" rx="1"/>
+  <line class="lead" x1="586.8" y1="204" x2="586.8" y2="184"/>
+  <text class="cl mono" x="586.8" y="178" text-anchor="middle">cancellation</text>
+  <rect class="case" x="738.7" y="204" width="6.2" height="6" rx="1"/>
+  <line class="lead" x1="741.8" y1="204" x2="741.8" y2="184"/>
+  <text class="cl mono" x="741.8" y="178" text-anchor="middle">large</text>
+  <rect class="case" x="926.1" y="204" width="4.0" height="6" rx="1"/>
+  <line class="lead" x1="928.1" y1="204" x2="928.1" y2="184"/>
+  <text class="cl mono" x="931.2" y="178" text-anchor="end">huge</text>
+  <polyline class="brk" points="152.3,122 152.3,112 932.2,112 932.2,122"/>
+  <text class="cl" x="542.2" y="104" text-anchor="middle"><tspan class="mono">wide_range</tspan><tspan style="font-weight:400;fill:var(--muted)">: a geometric sweep from tiny to max</tspan></text>
+  <line class="bad" x1="345.8" y1="212" x2="345.8" y2="252"/>
+  <circle class="badm" cx="345.8" cy="210" r="3.5"/>
+  <text class="bl" x="345.8" y="268" text-anchor="middle">x·x underflows</text>
+  <text class="bv mono" x="345.8" y="286" text-anchor="middle">|x| &lt; 1.1e-19</text>
+  <text class="bh" x="345.8" y="303" text-anchor="middle">hypot, normalize, std</text>
+  <line class="bad" x1="559.1" y1="212" x2="559.1" y2="252"/>
+  <circle class="badm" cx="559.1" cy="210" r="3.5"/>
+  <text class="bl" x="559.1" y="268" text-anchor="middle">exp(x) overflows</text>
+  <text class="bv mono" x="559.1" y="286" text-anchor="middle">x &gt; 88.7</text>
+  <text class="bh" x="559.1" y="303" text-anchor="middle">logsumexp, softmax, sigmoid</text>
+  <line class="bad" x1="932.2" y1="212" x2="932.2" y2="252"/>
+  <circle class="badm" cx="932.2" cy="210" r="3.5"/>
+  <text class="bl" x="932.2" y="268" text-anchor="end">anything larger is inf</text>
+  <text class="bv mono" x="932.2" y="286" text-anchor="end">max = 3.4e38</text>
+  <line class="bad" x1="152.3" y1="212" x2="152.3" y2="320"/>
+  <circle class="badm" cx="152.3" cy="210" r="3.5"/>
+  <text class="wl" x="152.3" y="336" text-anchor="middle">bits fade (subnormal)</text>
+  <text class="bv mono" x="152.3" y="354" text-anchor="middle">|x| &lt; 1.2e-38</text>
+  <line class="bad" x1="465.5" y1="212" x2="465.5" y2="320"/>
+  <circle class="badm" cx="465.5" cy="210" r="3.5"/>
+  <text class="bl" x="465.5" y="336" text-anchor="middle">1 + x rounds to 1</text>
+  <text class="bv mono" x="465.5" y="354" text-anchor="middle">|x| &lt; 6.0e-8</text>
+  <text class="bh" x="465.5" y="371" text-anchor="middle">log1p</text>
+  <line class="bad" x1="735.7" y1="212" x2="735.7" y2="320"/>
+  <circle class="badm" cx="735.7" cy="210" r="3.5"/>
+  <text class="bl" x="735.7" y="336" text-anchor="middle">x·x overflows</text>
+  <text class="bv mono" x="735.7" y="354" text-anchor="middle">|x| &gt; 1.8e19</text>
+  <text class="bh" x="735.7" y="371" text-anchor="middle">hypot, variance, norms</text>
+  <rect class="strip" x="20" y="400" width="960" height="60" rx="10"/>
+  <text class="sl" x="36" y="424">Not about magnitude</text>
+  <text class="sk mono" x="186" y="424" word-spacing="2">zeros  -0.0  empty  single  pair  large_n  nan  +inf  -inf  duplicates  sorted  alternating  boundary  int_min  int_max</text>
+  <text class="note" x="36" y="446">float64 runs from 4.9e-324 to 1.8e308 and float16 from 6.0e-8 to 65504: the same failure points, at different numbers.</text>
+</svg>

@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-labelledby="t d">
+  <title id="t">numguard security model on GitHub: three trust zones</title>
+  <desc id="d">Zone 1, check: the check job runs on pull_request, imports and runs the PR's code through numguard check and the pytest plugin, has a read-only token and no secrets, and uploads result.json, card.md and the PR number as an artifact. Zone 2, agent (opt-in): the propose job holds the LLM API key but only reads the failing targets' source as data and never imports or executes it; the verify job, on a separate runner with no secrets, runs each candidate rewrite in a subprocess sandbox against the checks and keeps only verified fixes. Zone 3, comment: the comment job runs on workflow_run with a pull-requests write token, never checks out or runs PR code, validates result.json strictly, re-renders the card from validated fields, and upserts one sticky comment plus an optional label. Arrows are artifacts. No job both runs PR code and holds a secret or a write token.</desc>
+  <style>
+    svg { --bg:#ffffff; --edge:#d3dae1; --ink:#1b2329; --muted:#5d6a74; --box:#f5f7f9; --zone:#fafbfc; --arrow:#7f8b95;
+          --run:#b54708; --run-bg:#fff0e3; --key:#0f6e7a; --key-bg:#dff1f2; --off:#5d6a74; --off-bg:#edf0f3; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#121a1f; --edge:#2f3b44; --ink:#e3eaee; --muted:#94a1aa; --box:#18232a; --zone:#151f25; --arrow:#6e7c86;
+            --run:#f0883e; --run-bg:#3a2312; --key:#48b8c4; --key-bg:#0f2d31; --off:#94a1aa; --off-bg:#222d34; }
+    }
+    text { font-family:-apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill:var(--ink); }
+    .mono { font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+    .bg { fill:var(--bg); stroke:var(--edge); }
+    .zone { fill:var(--zone); stroke:var(--edge); stroke-width:1.2; stroke-dasharray:6 5; }
+    .card { fill:var(--box); stroke:var(--edge); stroke-width:1.2; }
+    .num { fill:var(--ink); } .numt { fill:var(--bg); font-size:13px; font-weight:700; }
+    .zh { font-size:16px; font-weight:650; }
+    .zs { font-size:12px; fill:var(--muted); }
+    .job { font-size:14px; font-weight:650; }
+    .li { font-size:12px; fill:var(--muted); }
+    .run { fill:var(--run-bg); } .run-t { fill:var(--run); }
+    .key { fill:var(--key-bg); } .key-t { fill:var(--key); }
+    .off { fill:var(--off-bg); } .off-t { fill:var(--off); }
+    .chip { font-size:11.5px; font-weight:600; }
+    .wire { fill:none; stroke:var(--arrow); stroke-width:1.7; }
+    .head { fill:var(--arrow); }
+    .pill { fill:var(--bg); stroke:var(--arrow); }
+    .pt { font-size:11.5px; fill:var(--ink); }
+    .foot { font-size:13px; fill:var(--muted); }
+    .footb { font-size:13px; font-weight:650; fill:var(--ink); }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0.5" y="0.5" width="999" height="559" rx="14"/>
+
+  <!-- zones -->
+  <rect class="zone" x="20" y="20" width="280" height="450" rx="12"/>
+  <circle class="num" cx="44" cy="48" r="12"/><text class="numt" x="44" y="52.5" text-anchor="middle">1</text>
+  <text class="zh" x="64" y="54">Check</text>
+  <text class="zs mono" x="36" y="84">on: pull_request</text>
+
+  <rect class="zone" x="360" y="20" width="280" height="450" rx="12"/>
+  <circle class="num" cx="384" cy="48" r="12"/><text class="numt" x="384" y="52.5" text-anchor="middle">2</text>
+  <text class="zh" x="404" y="54">Agent (opt-in)</text>
+  <text class="zs mono" x="376" y="84">on: workflow_run, gated</text>
+
+  <rect class="zone" x="700" y="20" width="280" height="450" rx="12"/>
+  <circle class="num" cx="724" cy="48" r="12"/><text class="numt" x="724" y="52.5" text-anchor="middle">3</text>
+  <text class="zh" x="744" y="54">Comment</text>
+  <text class="zs mono" x="716" y="84">on: workflow_run</text>
+
+  <!-- check job -->
+  <rect class="card" x="36" y="104" width="248" height="236" rx="10"/>
+  <text class="job" x="50" y="130">check job</text>
+  <rect class="run" x="50" y="144" width="104" height="22" rx="11"/>
+  <text class="chip run-t" x="102" y="159" text-anchor="middle">runs PR code</text>
+  <rect class="off" x="162" y="144" width="104" height="22" rx="11"/>
+  <text class="chip off-t" x="214" y="159" text-anchor="middle">no secrets</text>
+  <text class="li mono" x="50" y="192">numguard check --config</text>
+  <text class="li" x="50" y="212">plus the pytest plugin, if set</text>
+  <text class="li mono" x="50" y="236">contents: read</text>
+  <text class="li mono" x="50" y="256">persist-credentials: false</text>
+  <text class="li" x="50" y="280">Card in the job summary</text>
+  <text class="li" x="50" y="300">Artifact: result.json, card.md,</text>
+  <text class="li" x="50" y="318">pr_number</text>
+
+  <!-- propose job -->
+  <rect class="card" x="376" y="104" width="248" height="160" rx="10"/>
+  <text class="job" x="390" y="130">propose job</text>
+  <rect class="off" x="390" y="144" width="104" height="22" rx="11"/>
+  <text class="chip off-t" x="442" y="159" text-anchor="middle">no PR code</text>
+  <rect class="key" x="502" y="144" width="104" height="22" rx="11"/>
+  <text class="chip key-t" x="554" y="159" text-anchor="middle">LLM API key</text>
+  <text class="li" x="390" y="192">Reads failing targets' source</text>
+  <text class="li" x="390" y="212">as data; never imports it</text>
+  <text class="li" x="390" y="232">Read-only tools, no exec</text>
+  <text class="li" x="390" y="252">Output: schema-checked rewrite</text>
+
+  <!-- verify job -->
+  <rect class="card" x="376" y="314" width="248" height="142" rx="10"/>
+  <text class="job" x="390" y="340">verify job</text>
+  <rect class="run" x="390" y="354" width="104" height="22" rx="11"/>
+  <text class="chip run-t" x="442" y="369" text-anchor="middle">runs PR code</text>
+  <rect class="off" x="502" y="354" width="104" height="22" rx="11"/>
+  <text class="chip off-t" x="554" y="369" text-anchor="middle">no secrets</text>
+  <text class="li" x="390" y="402">Runs each rewrite in a subprocess</text>
+  <text class="li" x="390" y="422">sandbox against the checks</text>
+  <text class="li" x="390" y="442">Separate runner from propose</text>
+
+  <!-- comment job -->
+  <rect class="card" x="716" y="104" width="248" height="352" rx="10"/>
+  <text class="job" x="730" y="130">comment job</text>
+  <rect class="off" x="730" y="144" width="104" height="22" rx="11"/>
+  <text class="chip off-t" x="782" y="159" text-anchor="middle">no PR code</text>
+  <rect class="key" x="842" y="144" width="104" height="22" rx="11"/>
+  <text class="chip key-t" x="894" y="159" text-anchor="middle">write token</text>
+  <text class="li" x="730" y="192">Never checks out PR code</text>
+  <text class="li" x="730" y="212">Validates result.json strictly</text>
+  <text class="li" x="730" y="232">Re-renders the card from</text>
+  <text class="li" x="730" y="250">validated fields only</text>
+  <text class="li" x="730" y="270">Ignores the uploaded card.md</text>
+  <text class="li" x="730" y="290">Upserts one sticky comment,</text>
+  <text class="li" x="730" y="308">optional label</text>
+
+  <rect class="off" x="730" y="328" width="220" height="112" rx="8"/>
+  <text class="li" x="744" y="354" style="fill:var(--ink);font-weight:600">Never used here:</text>
+  <text class="li mono" x="744" y="376">pull_request_target</text>
+  <text class="li" x="744" y="396">with a checkout of the PR head</text>
+  <text class="li" x="744" y="416">(the "pwn request" pattern)</text>
+
+  <!-- artifacts -->
+  <path class="wire" d="M284 184 L 372 184" marker-end="url(#arr)"/>
+  <rect class="pill" x="284" y="173" width="88" height="22" rx="11"/>
+  <text class="pt mono" x="328" y="188" text-anchor="middle" font-size="11">result.json</text>
+
+  <path class="wire" d="M500 264 L 500 310" marker-end="url(#arr)"/>
+  <rect class="pill" x="440" y="276" width="120" height="22" rx="11"/>
+  <text class="pt" x="500" y="291" text-anchor="middle">candidate rewrite</text>
+
+  <path class="wire" d="M624 386 L 712 386" marker-end="url(#arr)"/>
+  <rect class="pill" x="628" y="375" width="80" height="22" rx="11"/>
+  <text class="pt" x="668" y="390" text-anchor="middle">verified fix</text>
+
+  <polyline class="wire" points="160,340 160,494 840,494 840,460" marker-end="url(#arr)"/>
+  <rect class="pill" x="372" y="483" width="256" height="22" rx="11"/>
+  <text class="pt" x="500" y="498" text-anchor="middle">result artifact (treated as untrusted)</text>
+
+  <text class="foot" x="500" y="540" text-anchor="middle"><tspan>Arrows are artifacts.</tspan> <tspan class="footb">No job both runs PR code and holds a secret or a write token.</tspan></text>
+</svg>
