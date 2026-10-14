@@ -20,6 +20,8 @@ from typing import Any, Callable
 
 import numpy as np
 
+from .dtypes import BFLOAT16, bf16_bits, dtype_name, finfo
+
 __all__ = [
     "HAS_MPMATH",
     "LONGDOUBLE_IS_EXTENDED",
@@ -38,6 +40,7 @@ LONGDOUBLE_IS_EXTENDED: bool = bool(np.finfo(np.longdouble).nmant > np.finfo(np.
 
 #: Default relative tolerances per floating dtype (roughly 10, 80 and 4500 ULP).
 DEFAULT_RTOL: dict[str, float] = {
+    "bfloat16": 6e-2,
     "float16": 1e-2,
     "float32": 1e-5,
     "float64": 1e-12,
@@ -52,6 +55,8 @@ def default_tolerance(dtype: Any) -> tuple[float, float]:
     subnormal values are measured against it. Integer and boolean dtypes are
     compared exactly.
     """
+    if dtype_name(dtype) == BFLOAT16:
+        return DEFAULT_RTOL[BFLOAT16], finfo(BFLOAT16).tiny
     dt = np.dtype(dtype)
     if dt.kind == "f":
         name = "longdouble" if dt == np.longdouble and dt != np.float64 else dt.name
@@ -86,6 +91,8 @@ def ulp_distance(a: Any, b: Any, dtype: Any = None) -> np.ndarray:
     """
     a = np.asarray(a)
     b = np.asarray(b)
+    if dtype is not None and dtype_name(dtype) == BFLOAT16:
+        return _ulp_distance_bf16(a, b)
     dt = np.dtype(dtype) if dtype is not None else np.result_type(a, b)
     if dt.kind != "f" or dt.itemsize not in _UINT_FOR_SIZE:
         raise TypeError(f"ulp_distance supports float16/32/64, not {dt}")
@@ -109,6 +116,20 @@ def ulp_distance(a: Any, b: Any, dtype: Any = None) -> np.ndarray:
     lo = np.minimum(ma, mb)
     dist = np.where(same, hi - lo, ma + mb).astype(np.float64)  # no overflow: ma, mb < 2**(bits-1)
     nan_a, nan_b = np.isnan(a), np.isnan(b)
+    dist = np.where(nan_a & nan_b, 0.0, dist)
+    dist = np.where(nan_a ^ nan_b, np.inf, dist)
+    return dist.reshape(shape)
+
+
+def _ulp_distance_bf16(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    a, b = np.broadcast_arrays(np.asarray(a, dtype=np.float32), np.asarray(b, dtype=np.float32))
+    shape = a.shape
+    ia = bf16_bits(a).reshape(-1).astype(np.int64)
+    ib = bf16_bits(b).reshape(-1).astype(np.int64)
+    ma, mb = ia & 0x7FFF, ib & 0x7FFF
+    same = (ia & 0x8000) == (ib & 0x8000)
+    dist = np.where(same, np.abs(ma - mb), ma + mb).astype(np.float64)
+    nan_a, nan_b = np.isnan(a).reshape(-1), np.isnan(b).reshape(-1)
     dist = np.where(nan_a & nan_b, 0.0, dist)
     dist = np.where(nan_a ^ nan_b, np.inf, dist)
     return dist.reshape(shape)

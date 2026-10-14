@@ -1,0 +1,30 @@
+# numguard, part 2 of 2: post the card (PRIVILEGED, never runs PR code).
+#
+# Dogfooding caller for the numguard repository itself. Other repositories
+# should run `numguard init` or copy examples/workflows/numguard-comment.yml.
+#
+# `workflow_run` workflows always run from the DEFAULT BRANCH, so both the
+# reusable workflow (`./.github/workflows/comment.yml`) and the numguard
+# installed by it (`github.sha`, the default branch commit) are trusted code,
+# never the pull request's. See docs/SECURITY_MODEL.md.
+name: numguard comment
+
+on:
+  workflow_run:
+    workflows: ["numguard"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    uses: ./.github/workflows/comment.yml
+    with:
+      numguard-repository: ${{ github.repository }}
+      numguard-ref: ${{ github.sha }}
+      labels: true

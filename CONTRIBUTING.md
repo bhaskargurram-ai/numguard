@@ -19,7 +19,8 @@ python -m unittest discover -s tests -v
 pytest
 ```
 
-Both corpus baselines must exit with status 0:
+See docs/TESTING.md for the test levels. Both corpus baselines must exit
+with status 0:
 
 ```bash
 numguard eval --baseline reference   # every reference implementation passes
@@ -28,8 +29,16 @@ numguard eval --baseline buggy       # every buggy implementation is detected
 
 ## Guidelines
 
-- Keep runtime dependencies to NumPy and click. Anything else (SciPy, mpmath,
-  pytest) must stay optional and degrade gracefully when it's missing.
+- Keep runtime dependencies to NumPy and click (plus `tomli` on Python 3.10).
+  Anything else (SciPy, mpmath, pytest, Hypothesis, PyTorch/JAX/CuPy,
+  ml_dtypes) must stay optional and degrade gracefully when it's missing. The
+  LLM client uses only the standard library.
+- Agent tests use the scripted fake model in `tests/fake_llm.py`; no test may
+  touch the network. Model-written code may only ever run through
+  `numguard.agent.sandbox.run_worker`.
+- Workflow changes must keep `tests/test_workflows.py` passing (see
+  docs/SECURITY_MODEL.md); if you change `numguard init`, regenerate
+  `examples/` with `numguard init --agent` in an empty directory.
 - Add type hints and docstrings to public functions.
 - Keep the generator deterministic. Derive every random draw from the `seed`
   argument.

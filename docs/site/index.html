@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>numguard: numbers, checked at the edges</title>
+<meta name="description" content="numguard tests Python array functions on the inputs that break numerical code: zeros, empty arrays, NaN, infinities, overflow-sized and subnormal values, cancellation-prone data and float16. It checks every answer against a reference, invariants and the dtype's limits, in pytest and on pull requests.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 140 140'%3E%3Crect width='140' height='140' rx='28' fill='%23dff1f2'/%3E%3Cpolyline points='34,28 20,28 20,112 34,112' fill='none' stroke='%231b2329' stroke-width='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpolyline points='106,28 120,28 120,112 106,112' fill='none' stroke='%231b2329' stroke-width='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M38 92V58M52 92V58M73 92V58M87 92V58' stroke='%230f6e7a' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='M101 92V44' stroke='%23c8322f' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --paper: #f4f6f7;
+    --surface: #ffffff;
+    --ink: #142027;
+    --muted: #56646d;
+    --rule: #d4dce1;
+    --teal: #0f6e7a;
+    --teal-soft: #dff1f2;
+    --fail: #c8322f;
+    --fail-soft: #fdeceb;
+    --pass: #1a7f37;
+    --pass-soft: #dcf5e2;
+    --warn: #8a5d00;
+    --code-bg: #e8eef0;
+    --focus: #0b63c4;
+    --sans: -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0b1114;
+      --surface: #121a1f;
+      --ink: #e3eaee;
+      --muted: #94a1aa;
+      --rule: #26323a;
+      --teal: #48b8c4;
+      --teal-soft: #0f2d31;
+      --fail: #ff6f66;
+      --fail-soft: #3a1716;
+      --pass: #4cc26a;
+      --pass-soft: #12301c;
+      --warn: #d6a23a;
+      --code-bg: #18232a;
+      --focus: #5aa6ff;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 24px; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 17px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration-color: var(--rule); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+  a:hover { text-decoration-color: var(--teal); }
+  a:focus-visible, .btn:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
+  code, pre { font-family: var(--mono); font-size: 0.88em; }
+  :not(pre) > code { background: var(--code-bg); padding: 0.1em 0.38em; border-radius: 5px; white-space: nowrap; }
+  img { max-width: 100%; height: auto; display: block; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  @media (max-width: 600px) { .wrap { padding: 0 16px; } }
+
+  /* header */
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 22px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; font-size: 19px; letter-spacing: -0.01em; text-decoration: none; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .brand .tile { fill: var(--teal-soft); }
+  .brand .brk { stroke: var(--ink); }
+  .brand .tk { stroke: var(--teal); }
+  .brand .edge { stroke: var(--fail); }
+  nav ul { list-style: none; display: flex; gap: 22px; margin: 0; padding: 0; font-size: 15px; }
+  nav a { text-decoration: none; color: var(--muted); }
+  nav a:hover { color: var(--ink); }
+  @media (max-width: 760px) { nav li:not(.gh) { display: none; } }
+
+  /* hero */
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 56px; align-items: center; padding-block: 52px 72px; }
+  @media (max-width: 920px) { .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-block: 24px 56px; } }
+  h1 {
+    font-size: clamp(2.3rem, 5vw, 3.7rem);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+    margin: 0 0 24px;
+    text-wrap: balance;
+  }
+  .lede { font-size: 1.18rem; line-height: 1.55; color: var(--muted); max-width: 34em; margin: 0 0 32px; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px; border-radius: 10px; font-weight: 650; font-size: 16px; text-decoration: none;
+    border: 1.5px solid var(--ink);
+  }
+  .btn.primary { background: var(--ink); color: var(--paper); }
+  .btn.primary:hover { background: var(--teal); border-color: var(--teal); color: var(--paper); }
+  .btn.ghost:hover { border-color: var(--teal); color: var(--teal); }
+  .status { margin: 20px 0 0; font-size: 14px; color: var(--muted); }
+
+  /* the case ledger: one function, four inputs */
+  .ledger {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 var(--rule), 0 28px 56px -36px rgba(8, 40, 46, 0.4);
+  }
+  .ledger-src { margin: 0; padding: 18px 22px 16px; font: 14px/1.55 var(--mono); border-bottom: 1px solid var(--rule); overflow-x: auto; }
+  .ledger-src .k { color: var(--teal); }
+  .ledger-src .c { color: var(--muted); }
+  .ledger table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .ledger th { text-align: left; font-weight: 600; color: var(--muted); font-size: 13px; padding: 10px 12px 8px; border-bottom: 1px solid var(--rule); }
+  .ledger td { padding: 12px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .ledger th:first-child, .ledger td:first-child { padding-left: 22px; }
+  .ledger th:last-child, .ledger td:last-child { padding-right: 22px; text-align: right; }
+  .ledger td.case code { background: none; padding: 0; font-size: 13.5px; font-weight: 600; }
+  .ledger td.case small { display: block; color: var(--muted); font: 12.5px/1.4 var(--mono); margin-top: 3px; overflow-wrap: anywhere; }
+  .ledger .v { font: 14px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ledger .v.bad { color: var(--fail); font-weight: 700; }
+  .ledger .v.ok { color: var(--pass); }
+  .ledger .v.ref { color: var(--muted); }
+  .verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 16px 22px 18px; font-size: 14.5px; color: var(--muted); }
+  .chip { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .chip.no { background: var(--fail-soft); color: var(--fail); }
+  .chip.ok { background: var(--pass-soft); color: var(--pass); }
+  @media (max-width: 520px) {
+    .ledger td, .ledger th { padding-left: 8px; padding-right: 8px; }
+    .ledger .v { font-size: 13px; }
+    .ledger-src { font-size: 12.5px; padding-inline: 16px; }
+  }
+
+  /* sections */
+  section { padding: 72px 0; border-top: 1px solid var(--rule); }
+  @media (max-width: 600px) { section { padding: 52px 0; } }
+  h2 { font-size: clamp(1.7rem, 3.4vw, 2.3rem); line-height: 1.15; letter-spacing: -0.025em; font-weight: 780; margin: 0 0 16px; max-width: 24em; text-wrap: balance; }
+  h3 { font-size: 1.08rem; line-height: 1.35; margin: 0 0 6px; font-weight: 700; letter-spacing: -0.005em; }
+  .intro { color: var(--muted); max-width: 40em; margin: 0 0 36px; font-size: 1.06rem; }
+  .intro strong { color: var(--ink); font-weight: 600; }
+
+  figure { margin: 0; }
+  figcaption { color: var(--muted); font-size: 14.5px; margin-top: 12px; max-width: 46em; }
+  figcaption code, .intro code { white-space: normal; overflow-wrap: anywhere; }
+  .diagram { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; }
+  .diagram img { width: 100%; min-width: 760px; }
+  .diagram:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  .shot { max-width: 940px; }
+  .shot img { border-radius: 12px; }
+  .term { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; }
+  .term:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  @media (max-width: 600px) { .term img { min-width: 720px; } }
+
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; margin-top: 40px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .grid > div { padding: 20px 0; border-top: 1px solid var(--rule); }
+  .grid p { margin: 0; color: var(--muted); }
+  .tag { font-size: 12.5px; font-weight: 650; color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; margin-top: 40px; }
+  @media (max-width: 860px) { .split { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
+  .points { list-style: none; margin: 0; padding: 0; }
+  .points li { padding: 14px 0 14px 28px; border-top: 1px solid var(--rule); position: relative; color: var(--muted); }
+  .points li strong { color: var(--ink); font-weight: 650; }
+  .points li::before { content: ""; position: absolute; left: 4px; top: 23px; width: 10px; height: 10px; border-radius: 2px; background: var(--teal); }
+  .points.warn li::before { background: var(--warn); }
+
+  .score { display: flex; align-items: baseline; gap: 14px; margin: 0 0 8px; }
+  .score .big { color: var(--ink); font: 800 clamp(3rem, 7vw, 4.8rem)/1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+  .score .of { color: var(--muted); font-size: 1.05rem; }
+  .stat p { color: var(--muted); margin: 0; max-width: 30em; }
+  .scores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 48px; margin: 0 0 40px; }
+  @media (max-width: 760px) { .scores { grid-template-columns: minmax(0, 1fr); } }
+  .shot.wide { max-width: 1072px; }
+  .stat .lead-note { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin: 0 0 8px; }
+
+  /* comparison */
+  .cmp { width: 100%; border-collapse: collapse; font-size: 15px; background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
+  .cmp th, .cmp td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .cmp th { font-size: 14px; color: var(--muted); font-weight: 650; }
+  .cmp td:first-child { font-weight: 650; white-space: nowrap; color: var(--ink); }
+  .cmp td { color: var(--muted); }
+  .cmp td b { color: var(--ink); }
+  .cmp-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; }
+  .cmp-wrap .cmp { min-width: 640px; }
+
+  /* quick start */
+  ol.steps { list-style: none; counter-reset: s; margin: 0; padding: 0; max-width: 780px; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 0 0 36px 56px; }
+  ol.steps > li::before {
+    content: counter(s); position: absolute; left: 0; top: -2px;
+    width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--ink);
+    display: grid; place-items: center; font-weight: 750; font-size: 15px;
+  }
+  ol.steps > li:not(:last-child)::after { content: ""; position: absolute; left: 17px; top: 40px; bottom: 8px; width: 1.5px; background: var(--rule); }
+  @media (max-width: 520px) {
+    ol.steps > li { padding-left: 46px; }
+  }
+  ol.steps p { margin: 0 0 12px; color: var(--muted); }
+  pre {
+    margin: 0 0 12px; padding: 16px 18px; border-radius: 10px; background: var(--surface); border: 1px solid var(--rule);
+    overflow-x: auto; line-height: 1.55; font-size: 14px;
+  }
+  pre .c { color: var(--muted); }
+  details { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); margin: 0 0 10px; }
+  summary { cursor: pointer; padding: 12px 16px; font-weight: 650; font-size: 15px; }
+  summary code { font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
+  details pre { margin: 0 12px 12px; border: none; background: var(--code-bg); }
+  details[open] summary { border-bottom: 1px solid var(--rule); margin-bottom: 12px; }
+
+  footer { border-top: 1px solid var(--rule); padding: 40px 0 56px; color: var(--muted); font-size: 15px; }
+  .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; }
+  .foot ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .ledger .v.bad, .ledger .verdict .chip { animation: land 600ms 300ms both cubic-bezier(.2,.7,.2,1); }
+    @keyframes land { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+
+<header class="wrap top">
+  <a class="brand" href="./" aria-label="numguard home">
+    <svg viewBox="0 0 140 140" aria-hidden="true">
+      <rect class="tile" width="140" height="140" rx="28"/>
+      <polyline class="brk" points="34,28 20,28 20,112 34,112" fill="none" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline class="brk" points="106,28 120,28 120,112 106,112" fill="none" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path class="tk" d="M38 92V58M52 92V58M73 92V58M87 92V58" stroke-width="6" stroke-linecap="round"/>
+      <path class="edge" d="M101 92V44" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+    numguard
+  </a>
+  <nav aria-label="Sections">
+    <ul>
+      <li><a href="#edges">Edge cases</a></li>
+      <li><a href="#corpus">Bug corpus</a></li>
+      <li><a href="#agent">Agent</a></li>
+      <li><a href="#start">Quick start</a></li>
+      <li class="gh"><a href="https://github.com/bhaskargurram-ai/numguard">GitHub</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>Passes on [1,&nbsp;2,&nbsp;3]. Returns inf on real data.</h1>
+      <p class="lede">numguard tests your array functions on <strong>the inputs that break numerical code</strong>: zeros, empty arrays, NaN, infinities, overflow-sized and subnormal values, cancellation-prone data and float16. It checks every answer against a reference, invariants and the dtype's limits, in pytest and on pull requests.</p>
+      <div class="actions">
+        <a class="btn primary" href="#start">Get started</a>
+        <a class="btn ghost" href="https://github.com/bhaskargurram-ai/numguard">View on GitHub</a>
+      </div>
+      <p class="status">Version 1.0.0, MIT licensed. Needs only NumPy; the agent is experimental and opt-in.</p>
+    </div>
+
+    <div class="ledger" role="figure" aria-label="Real results for a naive logsumexp in float32. On [1, 2, 3] it returns 3.4076, matching the reference. On the cancellation case, 46341 plus 0 to 4, it returns inf where the reference is 46345.6. On huge values it returns inf where the reference is 1.40e38. On large values, inf where the reference is 1.43e20. numguard: 230 checks passed, 16 failed.">
+<pre class="ledger-src"><span class="c"># the obvious version</span>
+<span class="k">def</span> logsumexp(x):
+    <span class="k">return</span> np.log(np.sum(np.exp(x)))</pre>
+      <table>
+        <thead>
+          <tr><th scope="col">Case</th><th scope="col">Returns</th><th scope="col">Reference</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="case"><code>happy path</code><small>[1, 2, 3]</small></td>
+            <td><span class="v ok">3.4076</span></td>
+            <td><span class="v ref">3.4076</span></td>
+          </tr>
+          <tr>
+            <td class="case"><code>cancellation</code><small>46341 + [0..4]</small></td>
+            <td><span class="v bad">inf</span></td>
+            <td><span class="v ref">46345.6</span></td>
+          </tr>
+          <tr>
+            <td class="case"><code>large</code><small>2–8 × √max</small></td>
+            <td><span class="v bad">inf</span></td>
+            <td><span class="v ref">1.43e20</span></td>
+          </tr>
+          <tr>
+            <td class="case"><code>huge</code><small>25–50 % of max</small></td>
+            <td><span class="v bad">inf</span></td>
+            <td><span class="v ref">1.40e38</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="verdict"><span class="chip no">FAILED</span><span><span class="num">230</span> passed, <span class="num">16</span> failed across 46 cases, float32 and float64</span></div>
+    </div>
+  </div>
+
+  <section id="output">
+    <div class="wrap">
+      <h2>The table you get back</h2>
+      <p class="intro">Every failure names the check, the case, the dtypes, the relative error and the distance in ULPs, plus any floating-point signal raised on the way. <strong>This is real output</strong>, not a mock-up.</p>
+      <figure class="shot">
+        <div class="term" tabindex="0" role="region" aria-label="Terminal output, scrolls sideways on small screens"><picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logsumexp-report-dark.png">
+          <img src="assets/logsumexp-report-light.png" width="2020" height="702" loading="lazy" alt="Real numguard output for the naive logsumexp: FAILED, 230 passed, 16 failed. The finite and reference checks fail on the huge, large, cancellation and wide_range cases, each returning inf with an overflow signal where the reference is finite.">
+        </picture></div>
+        <figcaption>From <code>examples/readme_logsumexp.py</code>, with NumPy 2.5.3 on Python 3.13.</figcaption>
+      </figure>
+      <p class="intro" style="margin-top:48px">On a pull request the same results arrive as one comment, rebuilt from validated data by a job that never runs the PR's code.</p>
+      <figure class="shot">
+        <div class="term" tabindex="0" role="region" aria-label="PR card, scrolls sideways on small screens"><img src="assets/numguard-card.png" width="1880" height="1458" loading="lazy" alt="A real numguard card: 2 of 2 targets fail numerical edge-case checks. logsumexp fails finite and reference with 16 failing results, log1p fails reference with 6. The expanded logsumexp section shows the failure table with inf where the reference is finite."></div>
+        <figcaption>A real card from <code>numguard check --config numguard.toml --card-out card.md</code> on a two-function example project.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="edges">
+    <div class="wrap">
+      <h2>Cases placed where naive formulas break</h2>
+      <p class="intro">The catalogue has 26 kinds, generated for every dtype you test and only inside each argument's domain. The magnitude cases sit on the thresholds where <code>exp</code>, squares and <code>1&nbsp;+&nbsp;x</code> stop working. <strong>The rest probe shape, sign and special values.</strong></p>
+      <figure>
+        <div class="diagram" tabindex="0" role="region" aria-label="Edge-case diagram, scrolls sideways on small screens"><img src="assets/edge-cases.svg" width="1000" height="480" loading="lazy" alt="A log-scale axis of float32 magnitudes from 1.4e-45 to 3.4e38. Above it, numguard's cases: subnormal, tiny, small, random, cancellation, large, huge and a wide_range sweep. Below it, where naive formulas break: x times x underflows below 1.1e-19, 1 plus x rounds to 1 below 6e-8, exp(x) overflows above 88.7, x times x overflows above 1.8e19, and anything above 3.4e38 is inf."></div>
+        <figcaption>Every threshold is computed from <code>np.finfo(np.float32)</code>. In float64, <code>exp</code> overflows above 709.8; in float16, above 11.1.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>Contract in, evidence out</h2>
+      <p class="intro">You say what should hold. numguard generates the cases, runs your function, and compares. <strong>Fixed rules decide every result</strong>; no model is involved unless you call the agent.</p>
+      <figure>
+        <div class="diagram" tabindex="0" role="region" aria-label="How-it-works diagram, scrolls sideways on small screens"><img src="assets/how-it-works.svg" width="1000" height="420" loading="lazy" alt="A function and its contract go into the case catalogue; each case runs through the backend with floating-point flags recorded; oracle, invariant and dtype-limit checks compare the outputs; the result is one report as a table, a pytest failure or a PR card."></div>
+      </figure>
+      <div class="grid">
+        <div>
+          <h3>An oracle, when you have one</h3>
+          <p>Compare with SciPy, NumPy, or a high-precision mpmath or long double reference. Errors come back as relative error and ULPs, per case and dtype.</p>
+        </div>
+        <div>
+          <h3>Invariants, when you don't</h3>
+          <p>Shift, scale and permutation properties, batching, monotonicity, bounds and your own postconditions catch wrong numbers without any reference.</p>
+        </div>
+        <div>
+          <h3>Where you already test</h3>
+          <p>A <code>@numguard.guard</code> decorator, a pytest marker or plugin, a <code>numguard.toml</code> for CI, and Hypothesis strategies that draw from the catalogue.</p>
+        </div>
+        <div>
+          <h3>Beyond NumPy <span class="tag">if installed</span></h3>
+          <p>Run the same cases through PyTorch, JAX or CuPy with <code>--backend</code>. The adapter is tested with a fake backend; the real libraries aren't in numguard's CI.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="corpus">
+    <div class="wrap">
+      <h2>Twelve bugs that pass their happy-path test</h2>
+      <p class="intro">The bundled corpus has 12 tasks, each with a prompt, a plausible naive implementation, a correct reference and a numguard spec: overflowing softmax and logsumexp, one-pass variance, float16 accumulation, zero-norm division, a zero quantization scale and more. Give the prompts to any coding agent and grade the answers.</p>
+      <div class="scores">
+        <div class="stat">
+          <p class="score"><span class="big">0/12</span><span class="of">naive versions pass</span></p>
+          <p>All 12 pass their happy-path test. numguard catches every one and lists the failing checks and cases.</p>
+        </div>
+        <div class="stat">
+          <p class="score"><span class="big">12/12</span><span class="of">references pass</span></p>
+          <p>No false alarms on the correct implementations. Both scoreboards are measured, and they are the only scores on this page.</p>
+        </div>
+      </div>
+      <figure class="shot wide">
+        <div class="term" tabindex="0" role="region" aria-label="Terminal output, scrolls sideways on small screens"><picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/eval-buggy-dark.png">
+          <img src="assets/eval-buggy-light.png" width="2140" height="854" loading="lazy" alt="Real output of numguard eval --baseline buggy: every task passes its happy-path test and fails numguard. Summary: numguard passed 0/12 tasks; happy-path tests passed 12/12.">
+        </picture></div>
+        <figcaption><code>numguard eval --baseline buggy</code>, real output.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="agent">
+    <div class="wrap">
+      <h2>An agent that proposes, and a checker that decides</h2>
+      <p class="intro"><code>suggest</code> drafts a spec, <code>fix</code> proposes a numerically stable rewrite, and <code>bench</code> runs a model on the corpus. All three are <strong>experimental and bring your own key</strong>. A rewrite counts only if numguard runs it and every check passes.</p>
+      <figure>
+        <div class="diagram" tabindex="0" role="region" aria-label="Agent fix loop diagram, scrolls sideways on small screens"><img src="assets/agent-fix-loop.svg" width="1000" height="380" loading="lazy" alt="The fix loop: the model proposes a same-signature rewrite with read-only tools; a static gate rejects dangerous imports and calls; the rewrite runs in a subprocess with a timeout and no secrets and is accepted only if it passes every check the original failed, adds no new failures, matches the reference and keeps dtype and shape. Otherwise the failure table goes back for up to three rounds."></div>
+      </figure>
+      <div class="split">
+        <div class="stat">
+          <p class="lead-note">No agent numbers yet.</p>
+          <p>We haven't measured how often <code>suggest</code> or <code>fix</code> produce something useful, or published <code>bench</code> results for any model, so this page shows none. When <code>fix</code> succeeds you get a diff and a before/after table; files change only with <code>--apply</code>. On pull requests the agent gets one round per failing target, and a verified rewrite shows up on the card as a diff.</p>
+        </div>
+        <ul class="points">
+          <li><strong>Read-only tools.</strong> The model sees the source, the failure table and the spec. Its only output is a schema-checked submit call, and its code must pass a static denylist before anything runs.</li>
+          <li><strong>Suspect references.</strong> If a suggested reference disagrees with your function on ordinary inputs, numguard flags the reference instead of reporting bugs.</li>
+          <li><strong>Herbie does this properly for expressions.</strong> For a scalar formula, its search with a real accuracy measure beats an LLM guess. numguard covers whole array functions, and only trusts what it ran.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="security">
+    <div class="wrap">
+      <h2>Designed for pull requests from forks</h2>
+      <p class="intro">On GitHub, numguard splits the work into three trust zones that only pass artifacts to each other, so <strong>no job both runs PR code and holds a secret or a write token</strong>.</p>
+      <figure>
+        <div class="diagram" tabindex="0" role="region" aria-label="Security model diagram, scrolls sideways on small screens"><img src="assets/security-model.svg" width="1000" height="560" loading="lazy" alt="Three trust zones. Check: runs PR code with a read-only token and no secrets. Agent: the propose job holds the LLM key but never imports the code; the verify job runs candidate rewrites with no secrets. Comment: holds a write token, never checks out PR code, and re-renders the card from validated JSON."></div>
+      </figure>
+      <div class="split">
+        <ul class="points">
+          <li><strong>Check job.</strong> Runs on <code>pull_request</code> with a read-only token and no secrets, and by default reads <code>numguard.toml</code> from the base commit so a PR can't loosen its own checks.</li>
+          <li><strong>Agent jobs.</strong> A gate with no key decides whether to run. The job with the key reads source as data. Candidate rewrites run in a separate job with no secrets, inside a subprocess with a timeout and a scrubbed environment.</li>
+          <li><strong>Comment job.</strong> Never checks out PR code. It validates <code>result.json</code>, re-renders the card and upserts one sticky comment.</li>
+        </ul>
+        <ul class="points warn">
+          <li><strong>The denylist is a speed bump.</strong> Python has many ways around an import filter; the real isolation is the job split. Run <code>fix</code> locally in a container if you don't trust the model.</li>
+          <li><strong>Not tamper-proof.</strong> A malicious PR can still interfere with its own results in the unprivileged job.</li>
+          <li>Read the threat model in <a href="https://github.com/bhaskargurram-ai/numguard/blob/main/docs/SECURITY_MODEL.md">SECURITY_MODEL.md</a>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="compare">
+    <div class="wrap">
+      <h2>Where it fits</h2>
+      <p class="intro">numguard borrows from tools that each do one part better. Its own gaps: no shrinking, no search beyond its catalogue, no proofs, and a small corpus.</p>
+      <div class="cmp-wrap" tabindex="0" role="region" aria-label="Comparison table, scrolls sideways on small screens">
+        <table class="cmp">
+          <thead><tr><th scope="col">Tool</th><th scope="col">Best at</th><th scope="col">What numguard adds</th></tr></thead>
+          <tbody>
+            <tr><td>Herbie</td><td>Rewriting a floating-point expression (FPCore) for accuracy, with an arbitrary-precision ground truth</td><td>Whole Python array functions, in pytest and CI</td></tr>
+            <tr><td>Hypothesis</td><td>Finding new failing inputs and shrinking them</td><td>A numerical edge-case catalogue, high-precision references and ULP reports; usable as Hypothesis strategies</td></tr>
+            <tr><td><code>numpy.testing</code></td><td>Asserting that arrays match, including in ULPs</td><td>The inputs to assert on, and the reference to assert against</td></tr>
+            <tr><td>SciCode-style benchmarks</td><td>Measuring models on many scientific coding problems</td><td><b>A tool you run on your own functions</b>, plus a small targeted corpus</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <h2>Set it up</h2>
+      <p class="intro">Check one function in a minute, then let <code>numguard init</code> add it to CI.</p>
+      <ol class="steps">
+        <li>
+          <h3>Install</h3>
+          <pre><code>pip install numguard   <span class="c"># once 1.0.0 is on PyPI</span>
+pip install "numguard @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"</code></pre>
+        </li>
+        <li>
+          <h3>Check a function</h3>
+          <pre><code>numguard check mypkg.ops:logsumexp --ref scipy.special:logsumexp \
+    --prop translation_equivariant</code></pre>
+          <p>Or call <code>numguard.check(fn, reference=...)</code> from Python, or add <code>@pytest.mark.numguard(fn=...)</code> to a test.</p>
+        </li>
+        <li>
+          <h3>Add it to pull requests</h3>
+          <p>From your repository root. It writes a commented <code>numguard.toml</code> and the caller workflows, and won't overwrite files without <code>--force</code>. List your functions as <code>[[target]]</code> tables; add a <code>[pytest]</code> table to run your test suite too.</p>
+          <pre><code>numguard init --target mypkg.ops:logsumexp   <span class="c"># add --agent for the fix agent</span></code></pre>
+          <details>
+            <summary><code>.github/workflows/numguard.yml</code>: run the checks</summary>
+<pre><code>name: numguard
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: numguard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    uses: bhaskargurram-ai/numguard/.github/workflows/check.yml@v1.0.0
+    with:
+      numguard-ref: v1.0.0
+      python-version: "3.12"
+      <span class="c"># Installs the project under test; this runs PR code (unprivileged job).</span>
+      install-command: 'pip install -e ".[dev]" || pip install -e .'
+      config: numguard.toml   <span class="c"># read from the PR's base commit when it exists there</span>
+      fail-on: fail           <span class="c"># or "error" / "never"</span></code></pre>
+          </details>
+          <details>
+            <summary><code>.github/workflows/numguard-comment.yml</code>: post the card</summary>
+<pre><code>name: numguard comment
+
+on:
+  workflow_run:
+    workflows: ["numguard"]   <span class="c"># must match the `name:` of numguard.yml</span>
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request' &amp;&amp; github.event.workflow_run.conclusion != 'cancelled'
+    permissions:
+      contents: read
+      actions: read          <span class="c"># download the artifact of the triggering run</span>
+      pull-requests: write   <span class="c"># upsert the comment and the status label</span>
+    uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.0.0
+    with:
+      numguard-ref: v1.0.0
+      labels: true</code></pre>
+          </details>
+          <details>
+            <summary><code>.github/workflows/numguard-agent.yml</code>: optional fix agent</summary>
+<pre><code>name: numguard agent
+
+on:
+  workflow_run:
+    workflows: ["numguard"]   <span class="c"># must match the `name:` of numguard.yml</span>
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  agent:
+    if: github.event.workflow_run.event == 'pull_request' &amp;&amp; github.event.workflow_run.conclusion != 'cancelled'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    uses: bhaskargurram-ai/numguard/.github/workflows/agent.yml@v1.0.0
+    with:
+      numguard-ref: v1.0.0
+      llm-provider: ${{ vars.NUMGUARD_LLM_PROVIDER }}
+      llm-model: ${{ vars.NUMGUARD_LLM_MODEL }}
+      llm-base-url: ${{ vars.NUMGUARD_LLM_BASE_URL }}
+      llm-reasoning-effort: ${{ vars.NUMGUARD_LLM_REASONING_EFFORT }}
+      python-version: "3.12"
+      install-command: 'pip install -e ".[dev]" || pip install -e .'
+      run-for: trusted   <span class="c"># or "everyone" (spends API credits on any fork PR)</span>
+    secrets:
+      llm-api-key: ${{ secrets.NUMGUARD_LLM_API_KEY }}
+
+  comment:
+    needs: agent
+    if: needs.agent.outputs.verified == 'true'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.0.0
+    with:
+      numguard-ref: v1.0.0
+      <span class="c"># Trusted values: the PR number comes from the gate job (API data, no PR</span>
+      <span class="c"># code ran there) and the artifact from this run's verify job.</span>
+      pr-number: ${{ needs.agent.outputs.pr-number }}
+      artifact-run-id: ${{ github.run_id }}
+      labels: true</code></pre>
+          </details>
+        </li>
+        <li>
+          <h3>Open a pull request</h3>
+          <p>Merge the workflows to your default branch first: <code>workflow_run</code> workflows only run from there. The card appears in the run's job summary right away, and as one PR comment with a <code>numguard: pass</code>, <code>fail</code> or <code>error</code> label once the comment workflow runs. For the agent, add a <code>NUMGUARD_LLM_API_KEY</code> secret and <code>NUMGUARD_LLM_PROVIDER</code> and <code>NUMGUARD_LLM_MODEL</code> variables, and keep <code>[agent] enabled = true</code> in <code>numguard.toml</code>.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>numguard is MIT licensed, by Bhaskar Gurram.</span>
+    <ul>
+      <li><a href="https://github.com/bhaskargurram-ai/numguard">Source on GitHub</a></li>
+      <li><a href="https://github.com/bhaskargurram-ai/numguard#readme">README</a></li>
+      <li><a href="https://github.com/bhaskargurram-ai/numguard/blob/main/docs/SECURITY_MODEL.md">Security model</a></li>
+      <li><a href="https://github.com/bhaskargurram-ai/numguard/blob/main/docs/AGENT.md">Agent docs</a></li>
+      <li><a href="https://github.com/bhaskargurram-ai/numguard/blob/main/CHANGELOG.md">Changelog</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>
