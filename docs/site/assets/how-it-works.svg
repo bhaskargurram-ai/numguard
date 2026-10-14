@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" height="420" role="img" aria-labelledby="t d">
+  <title id="t">How numguard checks a function</title>
+  <desc id="d">A function and its spec (from the guard decorator, a numguard.toml target, or a pytest marker) go into the edge-case catalogue, which generates domain-aware, seeded cases for every dtype and, for several arguments, one argument at a time. Each case runs through the backend adapter (NumPy, or PyTorch, JAX or CuPy when installed) while floating-point flags and input snapshots are recorded. Three families of checks compare the outputs: an oracle (a reference or a high-precision mpmath or long double reference, with relative error and ULPs), invariants (metamorphic properties, batching, monotonicity, bounds, postconditions) and dtype limits (finite, NaN handling, dtype preserved, no input mutation, no unexpected errors). The result is one report: a table and JSON, a failing pytest item, or a card on a pull request. When checks fail, the optional agent can propose a rewrite, which counts only after numguard re-runs every check on it.</desc>
+  <style>
+    svg { --bg:#ffffff; --edge:#d3dae1; --ink:#1b2329; --muted:#5d6a74; --box:#f5f7f9; --arrow:#7f8b95;
+          --teal:#0f6e7a; --teal-bg:#dff1f2; --fail:#c8322f; --fail-bg:#fdeceb; --violet:#7a4fc9; --violet-bg:#f4eefe; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#121a1f; --edge:#2f3b44; --ink:#e3eaee; --muted:#94a1aa; --box:#18232a; --arrow:#6e7c86;
+            --teal:#48b8c4; --teal-bg:#0f2d31; --fail:#ff6f66; --fail-bg:#3a1716; --violet:#ab8af0; --violet-bg:#261d3d; }
+    }
+    text { font-family:-apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill:var(--ink); }
+    .mono { font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+    .bg { fill:var(--bg); stroke:var(--edge); }
+    .box { fill:var(--box); stroke:var(--edge); stroke-width:1.2; }
+    .inner { fill:var(--bg); stroke:var(--edge); }
+    .acc { fill:var(--teal-bg); stroke:var(--teal); stroke-width:1.2; }
+    .h { font-size:14.5px; font-weight:650; }
+    .sub { font-size:12px; fill:var(--muted); }
+    .li { font-size:12px; fill:var(--muted); }
+    .code { font-size:11.5px; fill:var(--ink); }
+    .gh { font-size:12.5px; font-weight:650; fill:var(--teal); }
+    .wire { fill:none; stroke:var(--arrow); stroke-width:1.6; }
+    .head { fill:var(--arrow); }
+    .lbl { font-size:11px; fill:var(--muted); }
+    .agent { fill:var(--violet-bg); stroke:var(--violet); stroke-width:1.2; stroke-dasharray:5 4; }
+    .ah { font-size:13px; font-weight:650; fill:var(--violet); }
+    .vwire { fill:none; stroke:var(--violet); stroke-width:1.4; stroke-dasharray:5 4; }
+    .vhead { fill:var(--violet); }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+    <marker id="varr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="vhead" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0.5" y="0.5" width="999" height="419" rx="14"/>
+
+  <!-- 1 function + spec -->
+  <rect class="box" x="20" y="24" width="180" height="300" rx="10"/>
+  <text class="h" x="34" y="50">Your function</text>
+  <text class="h" x="34" y="68">and its contract</text>
+  <text class="sub" x="34" y="94">declared in one of:</text>
+  <rect class="inner" x="30" y="104" width="160" height="30" rx="6"/>
+  <text class="code mono" x="40" y="124">@numguard.guard</text>
+  <rect class="inner" x="30" y="140" width="160" height="30" rx="6"/>
+  <text class="code mono" x="40" y="160">numguard.toml</text>
+  <rect class="inner" x="30" y="176" width="160" height="30" rx="6"/>
+  <text class="code mono" x="40" y="196">pytest.mark.numguard</text>
+  <text class="li" x="34" y="232">domains, dtypes,</text>
+  <text class="li" x="34" y="250">reference, properties,</text>
+  <text class="li" x="34" y="268">tolerances, backend</text>
+
+  <path class="wire" d="M200 174 L 232 174" marker-end="url(#arr)"/>
+
+  <!-- 2 catalogue -->
+  <rect class="box" x="236" y="24" width="164" height="300" rx="10"/>
+  <text class="h" x="250" y="50">Case catalogue</text>
+  <text class="sub" x="250" y="70">26 kinds, seeded</text>
+  <text class="code mono" x="250" y="98">zeros  -0.0  empty</text>
+  <text class="code mono" x="250" y="118">nan  +inf  -inf</text>
+  <text class="code mono" x="250" y="138">huge  large  small</text>
+  <text class="code mono" x="250" y="158">tiny  subnormal</text>
+  <text class="code mono" x="250" y="178">cancellation</text>
+  <text class="code mono" x="250" y="198">wide_range  large_n</text>
+  <text class="li" x="250" y="232">× every dtype under test</text>
+  <text class="li" x="250" y="250">× one argument at a time</text>
+  <text class="li" x="250" y="268">only in-domain values</text>
+
+  <path class="wire" d="M400 174 L 432 174" marker-end="url(#arr)"/>
+
+  <!-- 3 run -->
+  <rect class="box" x="440" y="24" width="152" height="300" rx="10"/>
+  <text class="h" x="450" y="50">Run each case</text>
+  <text class="sub" x="450" y="70">through the backend</text>
+  <rect class="inner" x="446" y="82" width="132" height="56" rx="6"/>
+  <text class="code mono" x="456" y="104">numpy (default)</text>
+  <text class="li" x="456" y="126">torch, jax, cupy</text>
+  <text class="li" x="450" y="166">records FP flags:</text>
+  <text class="code mono" x="450" y="186">overflow  invalid</text>
+  <text class="code mono" x="450" y="204">divide</text>
+  <text class="li" x="450" y="236">snapshots inputs to</text>
+  <text class="li" x="450" y="254">catch in-place edits</text>
+
+  <path class="wire" d="M588 174 L 620 174" marker-end="url(#arr)"/>
+
+  <!-- 4 checks -->
+  <rect class="box" x="624" y="24" width="188" height="300" rx="10"/>
+  <text class="h" x="638" y="50">Checks</text>
+  <rect class="acc" x="634" y="62" width="168" height="80" rx="7"/>
+  <text class="gh" x="646" y="82">Oracle</text>
+  <text class="li" x="646" y="100">reference or highprec</text>
+  <text class="li" x="646" y="116">(mpmath, long double)</text>
+  <text class="li" x="646" y="132">max rel error and ULPs</text>
+  <rect class="inner" x="634" y="150" width="168" height="80" rx="7"/>
+  <text class="gh" x="646" y="170">Invariants</text>
+  <text class="li" x="646" y="188">properties, batch,</text>
+  <text class="li" x="646" y="204">monotonic, bounds,</text>
+  <text class="li" x="646" y="220">postconditions</text>
+  <rect class="inner" x="634" y="238" width="168" height="76" rx="7"/>
+  <text class="gh" x="646" y="258">Dtype limits</text>
+  <text class="li" x="646" y="276">finite, nan, dtype,</text>
+  <text class="li" x="646" y="292">mutation, error</text>
+
+  <path class="wire" d="M812 174 L 840 174" marker-end="url(#arr)"/>
+
+  <!-- 5 report -->
+  <rect class="box" x="844" y="24" width="136" height="300" rx="10"/>
+  <text class="h" x="858" y="50">One report</text>
+  <text class="li" x="858" y="76">pass or fail</text>
+  <text class="li" x="858" y="92">per check × case</text>
+  <text class="li" x="858" y="108">× dtype</text>
+  <rect class="inner" x="854" y="124" width="116" height="30" rx="6"/>
+  <text class="code" x="864" y="144">table, JSON</text>
+  <rect class="inner" x="854" y="160" width="116" height="30" rx="6"/>
+  <text class="code" x="864" y="180">pytest failure</text>
+  <rect class="inner" x="854" y="196" width="116" height="30" rx="6"/>
+  <text class="code" x="864" y="216">PR card</text>
+  <text class="li" x="858" y="254">exit 1 on</text>
+  <text class="li" x="858" y="270">any failure</text>
+
+  <!-- optional agent -->
+  <rect class="agent" x="236" y="350" width="576" height="50" rx="10"/>
+  <text class="ah" x="252" y="371">Optional agent (experimental)</text>
+  <text class="li" x="252" y="389"><tspan class="mono">suggest</tspan> drafts a spec, <tspan class="mono">fix</tspan> proposes a rewrite. Nothing counts until the checks re-run.</text>
+  <polyline class="vwire" points="912,324 912,375 816,375" marker-end="url(#varr)"/>
+  <text class="lbl" x="862" y="368" text-anchor="middle">failures</text>
+  <polyline class="vwire" points="252,350 252,338 110,338 110,328" marker-end="url(#varr)"/>
+  <text class="lbl" x="180" y="352" text-anchor="middle">re-check</text>
+</svg>
