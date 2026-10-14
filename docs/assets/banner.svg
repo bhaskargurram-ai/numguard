@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" width="960" height="240" role="img" aria-labelledby="t d">
+  <title id="t">numguard: Numbers, checked at the edges.</title>
+  <desc id="d">The numguard wordmark next to its mark: a stretch of the floating-point number line, with tick spacing that doubles like real float spacing, held between two guard brackets. The tagline reads "Numbers, checked at the edges." A small ledger shows three real results: a naive logsumexp returns inf where the reference is 46345.6, a one-pass variance returns 0.0 where the answer is 0.667, and NumPy's float16 variance of 100,000 values returns inf where the answer is 0.083.</desc>
+  <style>
+    svg { --bg:#ffffff; --edge:#d3dae1; --ink:#1b2329; --muted:#5d6a74; --row:#f5f7f9;
+          --teal:#0f6e7a; --teal-bg:#dff1f2; --fail:#c8322f; --fail-bg:#fdeceb; }
+    @media (prefers-color-scheme: dark) {
+      svg { --bg:#121a1f; --edge:#2f3b44; --ink:#e3eaee; --muted:#94a1aa; --row:#18232a;
+            --teal:#48b8c4; --teal-bg:#0f2d31; --fail:#ff6f66; --fail-bg:#3a1716; }
+    }
+    .bg { fill:var(--bg); stroke:var(--edge); }
+    .sans { font-family:-apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
+    .mono { font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+    .word { fill:var(--ink); font-size:64px; font-weight:700; letter-spacing:-1.5px; }
+    .tag { fill:var(--muted); font-size:22px; }
+    .tile { fill:var(--teal-bg); }
+    .brk { fill:none; stroke:var(--ink); stroke-width:9; stroke-linecap:round; stroke-linejoin:round; }
+    .axis { stroke:var(--ink); stroke-width:4; stroke-linecap:round; }
+    .tick { stroke:var(--teal); stroke-width:4; stroke-linecap:round; }
+    .edge { stroke:var(--fail); stroke-width:4; stroke-linecap:round; }
+    .row { fill:var(--row); stroke:var(--edge); }
+    .call { fill:var(--ink); font-size:12px; }
+    .chip { fill:var(--fail-bg); }
+    .chip-t { fill:var(--fail); font-size:12px; font-weight:600; }
+    .cap { fill:var(--muted); font-size:12px; }
+  </style>
+
+  <rect class="bg" x="0.5" y="0.5" width="959" height="239" rx="16"/>
+
+  <!-- mark: float spacing (doubling per binade) held between guard brackets; the last tick is the edge -->
+  <g transform="translate(46 50)">
+    <rect class="tile" x="0" y="0" width="140" height="140" rx="28"/>
+    <polyline class="brk" points="34,28 20,28 20,112 34,112"/>
+    <polyline class="brk" points="106,28 120,28 120,112 106,112"/>
+    <line class="axis" x1="34" y1="92" x2="106" y2="92"/>
+    <line class="tick" x1="38" y1="92" x2="38" y2="58"/>
+    <line class="tick" x1="45" y1="92" x2="45" y2="58"/>
+    <line class="tick" x1="52" y1="92" x2="52" y2="58"/>
+    <line class="tick" x1="59" y1="92" x2="59" y2="58"/>
+    <line class="tick" x1="73" y1="92" x2="73" y2="58"/>
+    <line class="tick" x1="87" y1="92" x2="87" y2="58"/>
+    <line class="edge" x1="101" y1="92" x2="101" y2="44"/>
+  </g>
+
+  <text class="sans word" x="214" y="124">numguard</text>
+  <text class="sans tag" x="218" y="164">Numbers, checked at the edges.</text>
+
+  <!-- three real results -->
+  <g class="sans" transform="translate(614 40)">
+    <rect class="row" x="0" y="0" width="318" height="40" rx="8"/>
+    <text class="mono call" x="14" y="25">logsumexp(46341+[0..4])</text>
+    <rect class="chip" x="194" y="9" width="116" height="22" rx="11"/>
+    <text class="chip-t" x="252" y="24.5" text-anchor="middle">inf, ref 46345.6</text>
+
+    <rect class="row" x="0" y="50" width="318" height="40" rx="8"/>
+    <text class="mono call" x="14" y="75">onepass_var(1e9+[1,2,3])</text>
+    <rect class="chip" x="194" y="59" width="116" height="22" rx="11"/>
+    <text class="chip-t" x="252" y="74.5" text-anchor="middle">0.0, ref 0.667</text>
+
+    <rect class="row" x="0" y="100" width="318" height="40" rx="8"/>
+    <text class="mono call" x="14" y="125">np.var(float16 × 100k)</text>
+    <rect class="chip" x="194" y="109" width="116" height="22" rx="11"/>
+    <text class="chip-t" x="252" y="124.5" text-anchor="middle">inf, ref 0.083</text>
+
+    <text class="cap" x="0" y="164">Real outputs of naive code. Each is fine on [1, 2, 3].</text>
+  </g>
+</svg>
