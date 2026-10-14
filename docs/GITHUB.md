@@ -8,7 +8,7 @@ See [SECURITY_MODEL.md](SECURITY_MODEL.md) for the reasoning.
 ## Set up
 
 ```bash
-pip install "numguard @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"
+pip install "numguard-ci @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"
 numguard init            # or: numguard init --agent
 ```
 

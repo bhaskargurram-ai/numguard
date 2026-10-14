@@ -63,12 +63,12 @@ jobs:
       - name: Check the sdist and wheel contents
         run: |
           set -euo pipefail
-          tar tzf "$RUNNER_TEMP"/dist/numguard-*.tar.gz > "$RUNNER_TEMP/sdist.txt"
+          tar tzf "$RUNNER_TEMP"/dist/*.tar.gz > "$RUNNER_TEMP/sdist.txt"
           for f in LICENSE README.md pyproject.toml src/numguard/cli.py src/numguard/carddata.py \
                    src/numguard/agent/worker.py corpus/logsumexp/task.md; do
             grep -q "/$f\$" "$RUNNER_TEMP/sdist.txt" || { echo "::error::sdist lacks $f"; exit 1; }
           done
-          python -m zipfile -l "$RUNNER_TEMP"/dist/numguard-*.whl > "$RUNNER_TEMP/wheel.txt"
+          python -m zipfile -l "$RUNNER_TEMP"/dist/*.whl > "$RUNNER_TEMP/wheel.txt"
           for f in numguard/agent/worker.py numguard/_corpus/logsumexp/task.md numguard/_corpus/logsumexp/spec.py \
                    numguard/py.typed; do
             grep -q "$f" "$RUNNER_TEMP/wheel.txt" || { echo "::error::wheel lacks $f"; exit 1; }

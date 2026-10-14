@@ -242,6 +242,6 @@ def highprec(
     if numpy_fn is None:
         raise ImportError(
             "mpmath is not installed and no numpy_fn fallback was given; "
-            "pip install 'numguard[mpmath]'"
+            "pip install 'numguard-ci[mpmath]'"
         )
     return longdouble(numpy_fn)

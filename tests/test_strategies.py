@@ -115,7 +115,7 @@ class FakeHypothesisTests(unittest.TestCase):
     def test_missing_hypothesis_gives_actionable_error(self):
         if HAS_HYPOTHESIS:  # pragma: no cover
             self.skipTest("real Hypothesis installed")
-        with self.assertRaisesRegex(ImportError, "numguard\\[hypothesis\\]"):
+        with self.assertRaisesRegex(ImportError, "numguard-ci\\[hypothesis\\]"):
             ngst.inputs_for(positive_log)
 
 
