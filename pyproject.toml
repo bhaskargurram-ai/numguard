@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,8 @@ name = "numguard"
 version = "1.0.0"
 description = "Numerical edge-case testing for array code: catch the NaNs, overflows and precision bugs that happy-path tests miss, in pytest and CI, with an optional agent whose fixes are verified by execution."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Bhaskar Gurram", email = "gurrambhaskar.ai@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
@@ -18,11 +19,10 @@ dependencies = [
 keywords = ["numpy", "testing", "numerical", "floating-point", "edge cases", "pytest", "ulp", "hypothesis",
             "github-actions", "llm"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: Pytest",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.10",
