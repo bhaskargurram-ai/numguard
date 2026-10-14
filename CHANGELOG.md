@@ -48,7 +48,9 @@ All notable changes to this project are documented here. The format follows
   `--apply` writes only verified rewrites. `numguard bench` runs a model on
   the 12 corpus tasks and prints a leaderboard row (pass@1, happy-path pass,
   per-task reasons) and JSON. `numguard agent propose` / `agent verify` split
-  the work for CI. Model-written code passes a static denylist and runs only
+  the work for CI; since the propose job cannot execute code, it asks for
+  `[agent] variants` (default 3) independent rewrites per failing target and
+  verify keeps the best. Model-written code passes a static denylist and runs only
   in a subprocess worker with a timeout and a scrubbed environment. The
   tool-use client (Anthropic Messages and OpenAI-compatible chat completions,
   retries, token and cost accounting) is configured with `NUMGUARD_LLM_*`

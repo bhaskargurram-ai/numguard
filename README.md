@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="numguard: Numbers, checked at the edges." width="880">
+  <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/assets/banner.svg" alt="numguard: Numbers, checked at the edges." width="880">
 </p>
 
 <p align="center">
@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/bhaskargurram-ai/numguard/actions/workflows/ci.yml"><img src="https://github.com/bhaskargurram-ai/numguard/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <a href="https://github.com/bhaskargurram-ai/numguard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue" alt="Python 3.10 to 3.13">
   <img src="https://img.shields.io/badge/version-1.0.0-informational" alt="Version 1.0.0">
   <img src="https://img.shields.io/badge/agent-experimental-orange" alt="Agent: experimental">
@@ -35,10 +35,10 @@ print(report.summary())
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logsumexp-report-dark.png">
-    <img src="docs/images/logsumexp-report-light.png" alt="Real output: numguard: logsumexp FAILED, 230 passed, 16 failed across 46 cases in float32 and float64. The finite and reference checks fail on the huge, large, cancellation and wide_range cases: the function returns inf where the reference gives 1.40244e+38, 1.43262e+20, 46345.6 and 2.08048e+37, with an overflow floating-point signal each time." width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/images/logsumexp-report-dark.png">
+    <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/images/logsumexp-report-light.png" alt="Real output: numguard: logsumexp FAILED, 230 passed, 16 failed across 46 cases in float32 and float64. The finite and reference checks fail on the huge, large, cancellation and wide_range cases: the function returns inf where the reference gives 1.40244e+38, 1.43262e+20, 46345.6 and 2.08048e+37, with an overflow floating-point signal each time." width="820">
   </picture>
-  <br><sub>Real output of <a href="examples/readme_logsumexp.py"><code>examples/readme_logsumexp.py</code></a> (NumPy 2.5.3, Python 3.13). The <code>cancellation</code> row is ordinary data with a large offset, like <code>46341 + [0, 1, 2, 3, 4]</code> in float32 or timestamps in float64: the right answer is about 46345.6 and the naive version returns <code>inf</code>.</sub>
+  <br><sub>Real output of <a href="https://github.com/bhaskargurram-ai/numguard/blob/main/examples/readme_logsumexp.py"><code>examples/readme_logsumexp.py</code></a> (NumPy 2.5.3, Python 3.13). The <code>cancellation</code> row is ordinary data with a large offset, like <code>46341 + [0, 1, 2, 3, 4]</code> in float32 or timestamps in float64: the right answer is about 46345.6 and the naive version returns <code>inf</code>.</sub>
 </p>
 
 > [!NOTE]
@@ -88,7 +88,7 @@ A careful implementation passes; a plausible-looking naive one gets a table that
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/how-it-works.svg" alt="A function and its contract, declared with the guard decorator, a numguard.toml target or a pytest marker, go into the case catalogue: 26 seeded, in-domain kinds for every dtype and one argument at a time. Each case runs through the backend while floating-point flags and input snapshots are recorded. Three families of checks compare the outputs: an oracle (reference or high-precision reference, with relative error and ULPs), invariants (properties, batching, monotonicity, bounds, postconditions) and dtype limits (finite, NaN, dtype, mutation, errors). The result is one report: a table and JSON, a pytest failure or a PR card. The optional agent can draft a spec or propose a rewrite, which counts only after the checks re-run." width="880">
+  <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/assets/how-it-works.svg" alt="A function and its contract, declared with the guard decorator, a numguard.toml target or a pytest marker, go into the case catalogue: 26 seeded, in-domain kinds for every dtype and one argument at a time. Each case runs through the backend while floating-point flags and input snapshots are recorded. Three families of checks compare the outputs: an oracle (reference or high-precision reference, with relative error and ULPs), invariants (properties, batching, monotonicity, bounds, postconditions) and dtype limits (finite, NaN, dtype, mutation, errors). The result is one report: a table and JSON, a pytest failure or a PR card. The optional agent can draft a spec or propose a rewrite, which counts only after the checks re-run." width="880">
 </p>
 
 1. **Contract.** You describe each argument (shape, domain such as `positive` or `"(-1, inf)"`, optional fixed dtype) and what should hold: a reference, properties, bounds, tolerances. Everything is optional; with nothing declared, numguard infers one 1-D array per positional parameter and still runs the dtype-limit checks.
@@ -176,7 +176,7 @@ numguard init                                  # add --agent for the experimenta
 numguard init --target mypkg.ops:logsumexp     # also add a [[target]] stub (repeatable)
 ```
 
-`init` writes the caller workflows below and a commented [`numguard.toml`](#config-file), refuses to overwrite existing files without `--force`, and prints the next steps. `--install-command CMD` changes how the workflow installs your project and `--ref` pins another numguard tag or commit. List your functions as `[[target]]` tables in `numguard.toml`, merge the files to your default branch (`workflow_run` workflows only run from there), and open a pull request. The files in [`examples/workflows/`](examples/workflows) and [`examples/numguard.toml`](examples/numguard.toml) are exactly what `numguard init --agent` writes; the snippets below are copied from them without their comment headers.
+`init` writes the caller workflows below and a commented [`numguard.toml`](#config-file), refuses to overwrite existing files without `--force`, and prints the next steps. `--install-command CMD` changes how the workflow installs your project and `--ref` pins another numguard tag or commit. List your functions as `[[target]]` tables in `numguard.toml`, merge the files to your default branch (`workflow_run` workflows only run from there), and open a pull request. The files in [`examples/workflows/`](https://github.com/bhaskargurram-ai/numguard/tree/main/examples/workflows) and [`examples/numguard.toml`](https://github.com/bhaskargurram-ai/numguard/blob/main/examples/numguard.toml) are exactly what `numguard init --agent` writes; the snippets below are copied from them without their comment headers.
 
 numguard runs as separate workflows so that the pull request's code and privileged tokens never share a job ([why](#security-model)). Each caller is a few lines that point at a reusable workflow in this repository. Pin `@v1.0.0`, or a full commit SHA if you want to be strict, and keep `numguard-ref` the same.
 
@@ -283,21 +283,21 @@ jobs:
 
 For the agent, add a repository **secret** `NUMGUARD_LLM_API_KEY` and repository **variables** `NUMGUARD_LLM_PROVIDER` (`anthropic` or `openai`) and `NUMGUARD_LLM_MODEL` (optional: `NUMGUARD_LLM_BASE_URL`, and `NUMGUARD_LLM_REASONING_EFFORT`, which OpenAI's GPT-6 Luna needs set to `none`), and set `[agent] enabled = true` in `numguard.toml` (`init --agent` does that). The key is only passed to the propose job, which never runs PR code.
 
-The reusable workflows take a few more inputs: `config-from` (`base`, the default, reads `numguard.toml` from the PR's base commit; `head` uses the PR's), `numguard-extras` (default `scipy`), `numguard-repository` and `timeout-minutes`. Pytest runs when `numguard.toml` has a [`[pytest]`](#config-file) table. Every input is listed in [docs/GITHUB.md](docs/GITHUB.md).
+The reusable workflows take a few more inputs: `config-from` (`base`, the default, reads `numguard.toml` from the PR's base commit; `head` uses the PR's), `numguard-extras` (default `scipy`), `numguard-repository` and `timeout-minutes`. Pytest runs when `numguard.toml` has a [`[pytest]`](#config-file) table. Every input is listed in [docs/GITHUB.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/GITHUB.md).
 
 On fork PRs the check workflow has no write token, so the card also appears in the run's **job summary** before the comment workflow posts it.
 
 <details>
 <summary><b>Use the composite action directly</b></summary>
 
-The `bhaskargurram-ai/numguard@v1.0.0` composite action ([`action.yml`](action.yml)) takes a `command`: `check` (default), `summary`, `comment`, `agent-propose` or `agent-verify`. The reusable workflows above combine them so that the trust zones stay apart; see [docs/GITHUB.md](docs/GITHUB.md#the-composite-action) before wiring them up yourself.
+The `bhaskargurram-ai/numguard@v1.0.0` composite action ([`action.yml`](https://github.com/bhaskargurram-ai/numguard/blob/main/action.yml)) takes a `command`: `check` (default), `summary`, `comment`, `agent-propose` or `agent-verify`. The reusable workflows above combine them so that the trust zones stay apart; see [docs/GITHUB.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/GITHUB.md#the-composite-action) before wiring them up yourself.
 
 </details>
 
 ## The edge-case catalogue
 
 <p align="center">
-  <img src="docs/assets/edge-cases.svg" alt="A log-scale axis of float32 magnitudes from 1.4e-45 to 3.4e38. Above it, numguard's magnitude cases: subnormal, tiny, small (1 to 100 eps), random near 1, cancellation near 46341, large (a few times the square root of max), huge (25 to 50 percent of max), and a wide_range sweep from tiny to max. Below it, where naive formulas break: values below 1.2e-38 lose bits; x times x underflows below 1.1e-19; 1 plus x rounds to 1 below 6e-8; exp(x) overflows above 88.7; x times x overflows above 1.8e19; anything above 3.4e38 is inf. A strip lists the cases that are not about magnitude: zeros, -0.0, empty, single, pair, large_n, nan, plus and minus inf, duplicates, sorted, alternating, boundary, int_min and int_max." width="880">
+  <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/assets/edge-cases.svg" alt="A log-scale axis of float32 magnitudes from 1.4e-45 to 3.4e38. Above it, numguard's magnitude cases: subnormal, tiny, small (1 to 100 eps), random near 1, cancellation near 46341, large (a few times the square root of max), huge (25 to 50 percent of max), and a wide_range sweep from tiny to max. Below it, where naive formulas break: values below 1.2e-38 lose bits; x times x underflows below 1.1e-19; 1 plus x rounds to 1 below 6e-8; exp(x) overflows above 88.7; x times x overflows above 1.8e19; anything above 3.4e38 is inf. A strip lists the cases that are not about magnitude: zeros, -0.0, empty, single, pair, large_n, nan, plus and minus inf, duplicates, sorted, alternating, boundary, int_min and int_max." width="880">
 </p>
 
 The catalogue is placed where naive formulas break, for each dtype under test. `numguard cases` lists every kind with its tags.
@@ -366,7 +366,7 @@ numguard.check(my_log1p, reference=ref, domain="(-1, inf)")
 <details>
 <summary><b>All <code>check()</code> options</b></summary>
 
-`inputs=`, `domain=`, `reference=`, `properties=`, `dtypes=`, `rtol=`, `atol=`, `nan="propagate" | "raise" | "ignore"`, `allow_nonfinite=[...]`, `may_raise=[...]`, `out_dtype=` (default `"preserve"`), `batched=`, `batch_axis=`, `monotonic=`, `bounds=`, `fp_signals="ignore" | "fail"`, `postconditions=[fn]`, `extra_cases={...}`, `include=`/`exclude=`, `ignore=["check:pattern"]`, `kwargs=` (forwarded to the function), `ref_kwargs=`, `n=`, `large_n=`, `seed=`, `backend=`. `@numguard.guard` and the pytest marker accept the same names; `[[target]]` tables accept the ones that can be written in TOML (see [docs/CONFIG.md](docs/CONFIG.md)).
+`inputs=`, `domain=`, `reference=`, `properties=`, `dtypes=`, `rtol=`, `atol=`, `nan="propagate" | "raise" | "ignore"`, `allow_nonfinite=[...]`, `may_raise=[...]`, `out_dtype=` (default `"preserve"`), `batched=`, `batch_axis=`, `monotonic=`, `bounds=`, `fp_signals="ignore" | "fail"`, `postconditions=[fn]`, `extra_cases={...}`, `include=`/`exclude=`, `ignore=["check:pattern"]`, `kwargs=` (forwarded to the function), `ref_kwargs=`, `n=`, `large_n=`, `seed=`, `backend=`. `@numguard.guard` and the pytest marker accept the same names; `[[target]]` tables accept the ones that can be written in TOML (see [docs/CONFIG.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CONFIG.md)).
 
 </details>
 
@@ -388,7 +388,7 @@ pytest --numguard-dtypes float16,float32 --numguard-large-n 1000000 --numguard-b
 
 ## Config file
 
-`numguard.toml` lists functions to check without touching their source, which is what CI uses. `numguard check` reads `./numguard.toml` (or `--config FILE`; `--target NAME` runs one target). `numguard init` writes this commented starting point ([`examples/numguard.toml`](examples/numguard.toml), header trimmed):
+`numguard.toml` lists functions to check without touching their source, which is what CI uses. `numguard check` reads `./numguard.toml` (or `--config FILE`; `--target NAME` runs one target). `numguard init` writes this commented starting point ([`examples/numguard.toml`](https://github.com/bhaskargurram-ai/numguard/blob/main/examples/numguard.toml), header trimmed):
 
 ```toml
 # [defaults]                                # applied to every target
@@ -442,7 +442,7 @@ monotonic = "increasing"
 - **`[pytest]`** (`args`, `timeout`, `enabled`) also runs pytest; **`[agent]`** (`enabled`, `rounds`, `max_tool_calls`, `max_targets`, `variants`, `timeout`) configures the [agent](#agent-experimental).
 - **Validation is strict.** An unknown key, wrong type or unknown value is an error that names the table and key, and keys that look like secrets (`api_key`, `token`, ...) are refused.
 
-In the GitHub workflow **the file is read from the PR's base commit**, so a pull request cannot loosen its own checks. Every key is documented in [docs/CONFIG.md](docs/CONFIG.md).
+In the GitHub workflow **the file is read from the PR's base commit**, so a pull request cannot loosen its own checks. Every key is documented in [docs/CONFIG.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CONFIG.md).
 
 ## Backends
 
@@ -482,7 +482,7 @@ def test_softmax_sums_to_one(args):
 
 ## The bug corpus
 
-[`corpus/`](corpus) contains 12 self-contained tasks, each **inspired by a real class of numerical bug** in AI-written and human-written array code. Each task folder has:
+[`corpus/`](https://github.com/bhaskargurram-ai/numguard/tree/main/corpus) contains 12 self-contained tasks, each **inspired by a real class of numerical bug** in AI-written and human-written array code. Each task folder has:
 
 - `task.md`: the prompt a coding agent receives (function name, signature, contract)
 - `buggy.py`: a plausible naive implementation that **passes a happy-path test**
@@ -513,8 +513,8 @@ numguard eval --baseline reference    # exit 0 only if every reference passes
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/eval-buggy-dark.png">
-    <img src="docs/images/eval-buggy-light.png" alt="Real output of numguard eval --baseline buggy: all 12 buggy implementations pass their happy-path test and all 12 fail numguard. For each task the table lists the failed checks (mostly finite and reference; fp_signals for sigmoid; batch for softmax; bounds for variance_onepass; post:scale_positive for quantize_dynamic) and the failing cases. Summary: numguard passed 0/12 tasks; happy-path tests passed 12/12." width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/images/eval-buggy-dark.png">
+    <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/images/eval-buggy-light.png" alt="Real output of numguard eval --baseline buggy: all 12 buggy implementations pass their happy-path test and all 12 fail numguard. For each task the table lists the failed checks (mostly finite and reference; fp_signals for sigmoid; batch for softmax; bounds for variance_onepass; post:scale_positive for quantize_dynamic) and the failing cases. Summary: numguard passed 0/12 tasks; happy-path tests passed 12/12." width="820">
   </picture>
 </p>
 
@@ -586,7 +586,7 @@ Three commands use an LLM. All three are **off unless you call them**, need your
 | `numguard bench` | `solution.py` for each corpus task | statically checks it, grades it with `numguard eval` in a subprocess, and prints a leaderboard row |
 
 <p align="center">
-  <img src="docs/assets/agent-fix-loop.svg" alt="The fix loop: from the failing checks, the model proposes a same-signature rewrite with read-only tools and a schema-checked submit call, holding the API key and executing nothing. A static gate allows imports only from numpy, math, scipy, mpmath and a few standard math modules and refuses open, eval, exec, compile, __import__ and dunder names. The rewrite then runs in a subprocess with a timeout, a scrubbed environment and no key, and is accepted only if it passes every check the original failed, introduces no new failures, agrees with the original on benign cases it passed, and keeps the signature, output shapes and dtypes. Accepted: a unified diff and before/after table, applied only with --apply. Otherwise the failure table goes back to the model, up to three rounds locally and one in CI." width="880">
+  <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/assets/agent-fix-loop.svg" alt="The fix loop: from the failing checks, the model proposes a same-signature rewrite with read-only tools and a schema-checked submit call, holding the API key and executing nothing. A static gate allows imports only from numpy, math, scipy, mpmath and a few standard math modules and refuses open, eval, exec, compile, __import__ and dunder names. The rewrite then runs in a subprocess with a timeout, a scrubbed environment and no key, and is accepted only if it passes every check the original failed, introduces no new failures, agrees with the original on benign cases it passed, and keeps the signature, output shapes and dtypes. Accepted: a unified diff and before/after table, applied only with --apply. Otherwise the failure table goes back to the model, up to three rounds locally and one in CI." width="880">
 </p>
 
 Configure the model through environment variables (never a config file); each command also takes `--provider`, `--model`, `--base-url` and `--reasoning-effort`:
@@ -643,14 +643,14 @@ Sends each task's `task.md` to the model (no tools), statically checks each `sol
 
 The agent workflow splits `fix` into `numguard agent propose` (holds the key, reads the PR as data, never installs or runs it) and `numguard agent verify` (no secrets, runs the rewrites against the checks). Because refinement needs execution feedback and the executing job must not hold the key, **CI asks for several independent rewrites per failing target instead** (`[agent] variants`, default 3, each in a fresh session with a different strategy hint) for up to `[agent] max_targets` (default 3) targets; the verify job runs every variant and keeps the best verified one. A verified rewrite appears on the card as a collapsible "suggested fix (verified)" diff; nothing is committed.
 
-**Be realistic about it.** We have not published `bench` results for any model, and we have not measured how often `suggest` or `fix` produce something useful: there are no agent numbers in this README because none were measured. "Verified" is relative to the spec and to numguard's cases; it is not a proof of correctness, so review a rewrite like any other patch. The corpus has 12 tasks, enough to separate naive from careful implementations and far too few to rank models with confidence. Details: [docs/AGENT.md](docs/AGENT.md).
+**Be realistic about it.** We have not published `bench` results for any model, and we have not measured how often `suggest` or `fix` produce something useful: there are no agent numbers in this README because none were measured. "Verified" is relative to the spec and to numguard's cases; it is not a proof of correctness, so review a rewrite like any other patch. The corpus has 12 tasks, enough to separate naive from careful implementations and far too few to rank models with confidence. Details: [docs/AGENT.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/AGENT.md).
 
 ## GitHub integration
 
 The check workflow runs `numguard check --config` (plus pytest when `numguard.toml` has a `[pytest]` table), writes a Markdown **card** to the job summary, and uploads `result.json`, `card.md`, the PR number and head SHA as the `numguard-result` artifact. The privileged comment workflow validates the artifact, re-renders the card and upserts one sticky PR comment.
 
 <p align="center">
-  <img src="docs/images/numguard-card.png" alt="A real numguard card: numguard: 2 of 2 targets fail numerical edge-case checks. A table lists logsumexp (46 cases, failing checks finite and reference, 16 failing results) and log1p (44 cases, reference, 6 failing results). The expanded logsumexp section names the function and the reference expression special.logsumexp(x) and shows the failure table: inf where the reference is 1.40244e+38, 1.43262e+20, 46345.6 and 2.08048e+37, each with an overflow signal." width="760">
+  <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/images/numguard-card.png" alt="A real numguard card: numguard: 2 of 2 targets fail numerical edge-case checks. A table lists logsumexp (46 cases, failing checks finite and reference, 16 failing results) and log1p (44 cases, reference, 6 failing results). The expanded logsumexp section names the function and the reference expression special.logsumexp(x) and shows the failure table: inf where the reference is 1.40244e+38, 1.43262e+20, 46345.6 and 2.08048e+37, each with an overflow signal." width="760">
   <br><sub>A real card: <code>numguard check --config numguard.toml --card-out card.md</code> on the two-target example from <a href="#config-file">Config file</a>, rendered the way GitHub shows it.</sub>
 </p>
 
@@ -667,7 +667,7 @@ The check workflow runs `numguard check --config` (plus pytest when `numguard.to
 Running a pull request's code next to a token or an API key is the dangerous part. numguard splits the work into three trust zones connected only by artifacts:
 
 <p align="center">
-  <img src="docs/assets/security-model.svg" alt="Three trust zones. Zone 1, check job on pull_request: runs PR code through numguard check and the pytest plugin, read-only token, no secrets, uploads result.json. Zone 2, agent (opt-in): the propose job holds the LLM key but reads the failing targets' source as data and never imports it; the verify job runs each candidate rewrite in a subprocess sandbox with no secrets, on a separate runner. Zone 3, comment job on workflow_run: holds a write token, never checks out PR code, validates result.json strictly and re-renders the card. No job both runs PR code and holds a secret or a write token." width="880">
+  <img src="https://raw.githubusercontent.com/bhaskargurram-ai/numguard/main/docs/assets/security-model.svg" alt="Three trust zones. Zone 1, check job on pull_request: runs PR code through numguard check and the pytest plugin, read-only token, no secrets, uploads result.json. Zone 2, agent (opt-in): the propose job holds the LLM key but reads the failing targets' source as data and never imports it; the verify job runs each candidate rewrite in a subprocess sandbox with no secrets, on a separate runner. Zone 3, comment job on workflow_run: holds a write token, never checks out PR code, validates result.json strictly and re-renders the card. No job both runs PR code and holds a secret or a write token." width="880">
 </p>
 
 - **PR code runs only in jobs without secrets.** The check job runs on `pull_request` with `contents: read`, `persist-credentials: false`, timeouts, and `numguard.toml` read from the **base** commit. The agent's verify job has no secrets either.
@@ -676,7 +676,7 @@ Running a pull request's code next to a token or an API key is the dangerous par
 - **The privileged comment job never checks out or executes PR code.** It installs numguard into an isolated virtualenv, validates `result.json` strictly and the triggering run's head SHA, re-renders the card from validated data (the uploaded `card.md` is ignored), escapes everything PR-derived, and warns when the PR changes workflows, `numguard.toml`, `pyproject.toml` or `conftest.py`.
 - **Never `pull_request_target` together with a checkout of the PR head.** That pattern runs attacker code with a write token and your secrets. The repository's own tests check the shipped workflows for it, for secrets in PR-code jobs, for `${{ github.event.* }}` interpolated into `run:` steps, and for minimal permissions.
 
-The subprocess denylist is a speed bump, not a sandbox: Python can reach most things in many ways. The real isolation on GitHub is the job split. Locally, `numguard fix` runs the candidate in a subprocess on your machine; run it in a container if you don't trust the model. A malicious PR can still tamper with its own results inside the unprivileged job. See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) and [docs/AGENT.md](docs/AGENT.md).
+The subprocess denylist is a speed bump, not a sandbox: Python can reach most things in many ways. The real isolation on GitHub is the job split. Locally, `numguard fix` runs the candidate in a subprocess on your machine; run it in a container if you don't trust the model. A malicious PR can still tamper with its own results inside the unprivileged job. See [docs/SECURITY_MODEL.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/SECURITY_MODEL.md) and [docs/AGENT.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/AGENT.md).
 
 ## How numguard compares
 
@@ -700,7 +700,7 @@ These tools are complementary. Herbie's search-based rewriting with a real accur
 
 ## Configuration and CLI reference
 
-The full references are [docs/CONFIG.md](docs/CONFIG.md), [docs/CLI.md](docs/CLI.md) and [docs/GITHUB.md](docs/GITHUB.md). Every command has `--help`.
+The full references are [docs/CONFIG.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CONFIG.md), [docs/CLI.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CLI.md) and [docs/GITHUB.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/GITHUB.md). Every command has `--help`.
 
 <details>
 <summary><b><code>numguard.toml</code> keys</b></summary>
@@ -849,7 +849,7 @@ So that no single job both runs PR code and holds a secret or a write token. A s
 
 ## Contributing
 
-Contributions are welcome, especially new corpus tasks and edge-case kinds. See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
+Contributions are welcome, especially new corpus tasks and edge-case kinds. See [CONTRIBUTING.md](https://github.com/bhaskargurram-ai/numguard/blob/main/CONTRIBUTING.md). In short:
 
 ```bash
 pip install -e ".[dev]"
@@ -857,8 +857,8 @@ python -m pytest            # or, without pytest: python -m unittest discover -s
 numguard eval --baseline reference && numguard eval --baseline buggy
 ```
 
-[docs/TESTING.md](docs/TESTING.md) describes every test level. Please report security issues privately through the repository's security advisory form rather than in a public issue.
+[docs/TESTING.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/TESTING.md) describes every test level. Please report security issues privately through the repository's security advisory form rather than in a public issue.
 
 ## License
 
-[MIT](LICENSE) © 2026 Bhaskar Gurram
+[MIT](https://github.com/bhaskargurram-ai/numguard/blob/main/LICENSE) © 2026 Bhaskar Gurram
