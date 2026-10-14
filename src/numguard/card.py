@@ -191,7 +191,7 @@ def _fix_sections(result: dict[str, Any]) -> list[str]:
         label = FIX_LABELS.get(f["status"], f["status"])
         after = "–" if f.get("after_failures") is None else str(f["after_failures"])
         out.append(f"**{escape_md(f['target'], 60)}**: {label} · failing results {f['before_failures']} → {after}"
-                   + (f" · {f['rounds']} round{'s' if f['rounds'] != 1 else ''}" if f.get("rounds") else "")
+                   + (f" · {f['rounds']} attempt{'s' if f['rounds'] != 1 else ''}" if f.get("rounds") else "")
                    + (f" · model {code(f['model'], 60)}" if f.get("model") else ""))
         if f.get("rationale"):
             out.append(f"> _model's explanation (not verified)_: {escape_md(f['rationale'], 300)}")

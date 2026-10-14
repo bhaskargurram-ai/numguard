@@ -412,6 +412,7 @@ pytest --numguard-dtypes float16,float32 --numguard-large-n 1000000 --numguard-b
 enabled = true
 # rounds = 3                                # refinement rounds for local `numguard fix`
 # max_targets = 3                           # failing targets per pull request
+# variants = 3                              # independent rewrites per target in CI; the best verified one is shown
 # timeout = 120                             # seconds per sandboxed check run
 ```
 
@@ -438,7 +439,7 @@ monotonic = "increasing"
 
 - **`reference`** is a Python *expression* over the function's argument names (`"special.logsumexp(x)"`, `"np.hypot(x, y)"`, `"mpmath.log1p(x)"`), checked statically and evaluated with only `np`, `math`, `special` (`scipy.special`) and `mpmath` available. `reference_precision` is `float64` (default), `longdouble`, or `mpmath` (elementwise, 50 digits). `reference_function = "module:function"` names a trusted callable instead.
 - **Every other key** means the same as the `numguard.check()` argument of the same name: `inputs` (one domain or `{ name, domain, shape, dtype }` table per positional argument), `dtypes`, `properties`, `rtol`/`atol` (a number or a per-dtype table), `nan`, `allow_nonfinite`, `bounds`, `monotonic`, `batched`, `fp_signals`, `backend`, and so on.
-- **`[pytest]`** (`args`, `timeout`, `enabled`) also runs pytest; **`[agent]`** (`enabled`, `rounds`, `max_tool_calls`, `max_targets`, `timeout`) configures the [agent](#agent-experimental).
+- **`[pytest]`** (`args`, `timeout`, `enabled`) also runs pytest; **`[agent]`** (`enabled`, `rounds`, `max_tool_calls`, `max_targets`, `variants`, `timeout`) configures the [agent](#agent-experimental).
 - **Validation is strict.** An unknown key, wrong type or unknown value is an error that names the table and key, and keys that look like secrets (`api_key`, `token`, ...) are refused.
 
 In the GitHub workflow **the file is read from the PR's base commit**, so a pull request cannot loosen its own checks. Every key is documented in [docs/CONFIG.md](docs/CONFIG.md).
@@ -640,7 +641,7 @@ Sends each task's `task.md` to the model (no tools), statically checks each `sol
 
 ### In CI
 
-The agent workflow splits `fix` into `numguard agent propose` (holds the key, reads the PR as data, never installs or runs it) and `numguard agent verify` (no secrets, runs the rewrites against the checks). Because refinement needs execution feedback and the executing job must not hold the key, **CI does one proposal round per failing target**, for up to `[agent] max_targets` (default 3) targets. A verified rewrite appears on the card as a collapsible "suggested fix (verified)" diff; nothing is committed.
+The agent workflow splits `fix` into `numguard agent propose` (holds the key, reads the PR as data, never installs or runs it) and `numguard agent verify` (no secrets, runs the rewrites against the checks). Because refinement needs execution feedback and the executing job must not hold the key, **CI asks for several independent rewrites per failing target instead** (`[agent] variants`, default 3, each in a fresh session with a different strategy hint) for up to `[agent] max_targets` (default 3) targets; the verify job runs every variant and keeps the best verified one. A verified rewrite appears on the card as a collapsible "suggested fix (verified)" diff; nothing is committed.
 
 **Be realistic about it.** We have not published `bench` results for any model, and we have not measured how often `suggest` or `fix` produce something useful: there are no agent numbers in this README because none were measured. "Verified" is relative to the spec and to numguard's cases; it is not a proof of correctness, so review a rewrite like any other patch. The corpus has 12 tasks, enough to separate naive from careful implementations and far too few to rank models with confidence. Details: [docs/AGENT.md](docs/AGENT.md).
 
@@ -709,7 +710,7 @@ The full references are [docs/CONFIG.md](docs/CONFIG.md), [docs/CLI.md](docs/CLI
 | `[defaults]` | any `[[target]]` key, merged into every target |
 | `[[target]]` | `function` (required), `name`, `description`, `inputs`, `domain`, `dtypes`, `properties`, `reference`, `reference_precision`, `reference_function`, `rtol`, `atol`, `nan`, `finite`, `allow_nonfinite`, `may_raise`, `exclude`, `include`, `ignore`, `bounds`, `monotonic`, `monotonic_arg`, `batched`, `batch_axis`, `fp_signals`, `out_dtype`, `check_mutation`, `kwargs`, `n`, `large_n`, `seed`, `ref_upcast`, `extra_cases`, `backend` |
 | `[pytest]` | `args`, `timeout`, `enabled` |
-| `[agent]` | `enabled` (default `false`), `rounds` (3), `max_tool_calls` (25), `max_targets` (3), `timeout` (120 s) |
+| `[agent]` | `enabled` (default `false`), `rounds` (3), `max_tool_calls` (25), `max_targets` (3), `variants` (3), `timeout` (120 s) |
 
 </details>
 

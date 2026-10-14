@@ -165,7 +165,8 @@ configured, a target actually fails, the PR is open and still at the checked
 commit, `[agent] enabled = true` is set (checked by `propose`), and the author
 is an owner, member or collaborator **or** a maintainer added the
 `numguard:agent` label (`run-for: everyone` turns this off). `max_targets`,
-`max_tool_calls` and the request budget cap each run.
+`variants`, `max_tool_calls` and the request budget cap each run (at most
+50 candidate rewrites per pull request).
 
 ## Token scope
 
