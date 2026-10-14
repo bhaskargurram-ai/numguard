@@ -31,7 +31,8 @@ def split_target(target: str) -> tuple[str, str]:
     if not isinstance(target, str) or not target.strip():
         raise TargetError("empty target")
     target = target.strip()
-    if ":" in target and not (len(target) > 1 and target[1] == ":" and target.count(":") == 1):
+    drive_only = len(target) > 2 and target[1] == ":" and target[2] in "/\\" and target.count(":") == 1
+    if ":" in target and not drive_only:
         mod_name, _, attr = target.rpartition(":")
     elif "." in target:
         mod_name, _, attr = target.rpartition(".")

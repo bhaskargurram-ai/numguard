@@ -400,5 +400,330 @@ def cases_cmd() -> None:
         click.echo(f"  {kind:<16} {', '.join(tags)}")
 
 
+# --------------------------------------------------------------------------
+# Agent commands (opt-in; bring your own LLM key)
+# --------------------------------------------------------------------------
+
+
+def _llm_options(f: Callable[..., Any]) -> Callable[..., Any]:
+    f = click.option("--reasoning-effort", default=None,
+                     help="OpenAI-compatible only: reasoning_effort (default: $NUMGUARD_LLM_REASONING_EFFORT).")(f)
+    f = click.option("--base-url", default=None, help="API base URL (default: $NUMGUARD_LLM_BASE_URL).")(f)
+    f = click.option("--model", default=None, help="Model id (default: $NUMGUARD_LLM_MODEL; there is no "
+                                                   "built-in default).")(f)
+    f = click.option("--provider", type=click.Choice(["anthropic", "openai"]), default=None,
+                     help="LLM API (default: $NUMGUARD_LLM_PROVIDER).")(f)
+    return f
+
+
+def _make_llm(provider: str | None, model: str | None, base_url: str | None, effort: str | None,
+              max_output_tokens: int = 8192) -> Any:
+    from .agent.llm import LLMConfigError, client_from_env  # noqa: PLC0415
+
+    env = dict(os.environ)
+    for key, val in (("PROVIDER", provider), ("MODEL", model), ("BASE_URL", base_url),
+                     ("REASONING_EFFORT", effort)):
+        if val:
+            env[f"NUMGUARD_LLM_{key}"] = val
+    try:
+        return client_from_env(env, max_output_tokens=max_output_tokens)
+    except LLMConfigError as exc:
+        raise click.UsageError(str(exc)) from exc
+
+
+def _echo_usage(usage: Any) -> None:
+    from .agent.common import usage_line  # noqa: PLC0415
+
+    try:
+        click.echo(f"LLM usage: {usage_line(usage)}", err=True)
+    except Exception as exc:  # noqa: BLE001 - a bad price variable must not hide the result
+        click.echo(f"LLM usage: {usage.to_dict()} ({exc})", err=True)
+
+
+@main.command("suggest")
+@click.argument("target")
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path), default=Path("."), show_default=True,
+              help="Repository root the model may read (read-only).")
+@click.option("--write", "write_path", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Write the spec: *.py -> a spec/test module; *.toml -> append a [[target]] table.")
+@click.option("--force", is_flag=True, help="With --write: overwrite an existing .py file.")
+@click.option("--rounds", type=click.IntRange(1, 5), default=2, show_default=True,
+              help="Rounds (a suspect reference or a spec that cannot run is sent back to the model).")
+@click.option("--max-tool-calls", type=click.IntRange(1, 200), default=25, show_default=True)
+@click.option("--timeout", type=float, default=120, show_default=True,
+              help="Seconds for each subprocess run of the spec.")
+@click.option("--large-n", type=int, default=None, help="Size of the large_n case (default: 100000).")
+@click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Also write the outcome (spec, reference status, report, usage) as JSON.")
+@_llm_options
+def suggest_cmd(target: str, root: Path, write_path: Path | None, force: bool, rounds: int, max_tool_calls: int,
+                timeout: float, large_n: int | None, json_out: Path | None, provider: str | None, model: str | None,
+                base_url: str | None, reasoning_effort: str | None) -> None:
+    """(agent) Let an LLM write a numguard spec for TARGET; numguard validates and runs it.
+
+    The model only gets read-only tools; its spec is validated strictly and
+    run in a subprocess. A reference that disagrees with the function on
+    ordinary inputs is reported as SUSPECT rather than as a bug. Exit status:
+    0 spec found and checks pass, 1 checks fail, 3 no usable spec.
+    """
+    from .agent.suggest import run_suggest  # noqa: PLC0415
+
+    llm = _make_llm(provider, model, base_url, reasoning_effort)
+    try:
+        out = run_suggest(target, llm=llm, root=root, rounds=rounds, max_tool_calls=max_tool_calls,
+                          timeout=timeout, overrides={"large_n": large_n} if large_n else None,
+                          log=lambda m: click.echo(m, err=True))
+    except TargetError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    if json_out is not None:
+        json_out.write_text(json.dumps(out.to_dict(), indent=2, default=str) + "\n", encoding="utf-8")
+    _echo_usage(out.usage)
+    if out.status != "ok":
+        click.echo(f"numguard suggest: no usable spec ({out.status}): {out.error}")
+        sys.exit(3)
+    click.echo(f"numguard suggest: {target} -- reference: {out.reference_status}"
+               + (f" (disagrees on ordinary inputs: {', '.join(out.suspect_cases[:6])})" if out.suspect_cases else ""))
+    for n in out.notes:
+        click.echo(f"note: {n}")
+    click.echo("\n# --- decorator (paste above the function) ---")
+    click.echo(out.decorator)
+    click.echo("# --- numguard.toml ---")
+    click.echo(out.toml)
+    click.echo("# --- check report ---")
+    click.echo(out.summary)
+    if write_path is not None:
+        _write_suggestion(write_path, out, force)
+    sys.exit(0 if out.check_ok else 1)
+
+
+def _write_suggestion(path: Path, out: Any, force: bool) -> None:
+    if path.suffix == ".toml":
+        from .config import ConfigError, load_config  # noqa: PLC0415
+
+        name = out.toml.split("name = ", 1)[1].split("\n", 1)[0].strip('"') if "name = " in out.toml else ""
+        if path.exists():
+            try:
+                cfg = load_config(path)
+            except ConfigError as exc:
+                raise click.ClickException(f"{path}: {exc}") from exc
+            if any(t["name"] == name for t in cfg.targets):
+                raise click.ClickException(f"{path} already has a target named {name!r}; not appending")
+            text = path.read_text(encoding="utf-8")
+            path.write_text(text.rstrip("\n") + "\n\n" + out.toml, encoding="utf-8")
+        else:
+            path.write_text(out.toml, encoding="utf-8")
+        click.echo(f"appended [[target]] {name!r} to {path}", err=True)
+        return
+    if path.exists() and not force:
+        raise click.ClickException(f"{path} exists (use --force to overwrite)")
+    path.write_text(out.python_spec, encoding="utf-8")
+    click.echo(f"wrote {path}", err=True)
+
+
+def _fix_spec(target: str, spec: Path | None, config_path: Path | None) -> tuple[str, dict[str, Any]]:
+    from .config import ConfigError, find_config, load_config  # noqa: PLC0415
+
+    if spec is not None and spec.suffix == ".py":
+        return target, {"source": "pyfile", "pyfile": str(spec.resolve())}
+    cfg_path = spec if spec is not None else (config_path or find_config())
+    if cfg_path is not None:
+        try:
+            cfg = load_config(cfg_path)
+        except ConfigError as exc:
+            raise click.UsageError(f"{cfg_path}: {exc}") from exc
+        for t in cfg.targets:
+            if target in (t["name"], t["function"]):
+                doc = {k: v for k, v in t.items() if k not in ("name", "function")}
+                return t["function"], {"source": "doc", "doc": doc}
+        if spec is not None or config_path is not None:
+            raise click.UsageError(f"{cfg_path} has no target named {target!r}")
+    return target, {"source": "guard"}
+
+
+@main.command("fix")
+@click.argument("target")
+@click.option("--spec", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None,
+              help="Spec: a Python spec file (SPEC dict, as written by `suggest --write x.py`) or a numguard.toml.")
+@click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None,
+              help="numguard.toml holding TARGET (by name or function). Default: ./numguard.toml if it has it, "
+                   "else the function's @numguard.guard spec.")
+@click.option("--rounds", type=click.IntRange(1, 10), default=3, show_default=True,
+              help="Refinement rounds: a rejected rewrite's failure table goes back to the model.")
+@click.option("--apply", "apply_", is_flag=True, help="Write a VERIFIED rewrite into the source file.")
+@click.option("--root", type=click.Path(file_okay=False, path_type=Path), default=Path("."), show_default=True)
+@click.option("--timeout", type=float, default=120, show_default=True,
+              help="Seconds for each subprocess check (original and every rewrite).")
+@click.option("--max-tool-calls", type=click.IntRange(1, 200), default=25, show_default=True)
+@click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@_llm_options
+def fix_cmd(target: str, spec: Path | None, config_path: Path | None, rounds: int, apply_: bool, root: Path,
+            timeout: float, max_tool_calls: int, json_out: Path | None, provider: str | None, model: str | None,
+            base_url: str | None, reasoning_effort: str | None) -> None:
+    """(agent) Let an LLM rewrite a failing function; numguard verifies the rewrite by executing it.
+
+    A rewrite is verified only if, run in a subprocess, it passes every check
+    the original failed, adds no new failure, keeps the signature, and agrees
+    with the original on ordinary inputs where the original passed. Prints a
+    unified diff and a before/after table; files change only with --apply.
+    Exit status: 0 verified (or nothing to fix), 1 otherwise.
+    """
+    from .agent.fix import before_after_rows, run_fix  # noqa: PLC0415
+    from .report import format_table  # noqa: PLC0415
+
+    function, spec_req = _fix_spec(target, spec, config_path)
+    llm = _make_llm(provider, model, base_url, reasoning_effort)
+    try:
+        out = run_fix(function, llm=llm, root=root, spec_req=spec_req, rounds=rounds, timeout=timeout,
+                      max_tool_calls=max_tool_calls, log=lambda m: click.echo(m, err=True))
+    except TargetError as exc:
+        raise click.BadParameter(str(exc)) from exc
+    if json_out is not None:
+        json_out.write_text(json.dumps(out.to_dict(), indent=2, default=str) + "\n", encoding="utf-8")
+    if out.status == "nothing_to_fix":
+        click.echo(f"numguard fix: {function} passes every check; nothing to fix.")
+        sys.exit(0)
+    _echo_usage(out.usage)
+    if out.status == "error" and not out.attempts:
+        click.echo(f"numguard fix: error: {out.error}")
+        sys.exit(1)
+    best = out.verified or out.final
+    rows = before_after_rows(out.before, best.data if best and best.data else {})
+    click.echo(f"numguard fix: {function}: {out.status.upper()} after {len(out.attempts)} round(s)")
+    if best is not None:
+        for r in best.reasons:
+            click.echo(f"  - {r}")
+    click.echo(format_table(["check", "failing before", "failing after"],
+                            [[r["check"], str(r["before"]), "-" if r["after"] is None else str(r["after"])]
+                             for r in rows]))
+    if out.diff:
+        click.echo(out.diff)
+    if apply_:
+        if out.status != "verified":
+            click.echo("not applied: the rewrite is not verified", err=True)
+        elif not out.new_text:
+            click.echo("not applied: the function's source file could not be located for editing", err=True)
+        else:
+            (root / out.rel_path).write_text(out.new_text, encoding="utf-8")
+            click.echo(f"applied the verified rewrite to {out.rel_path}", err=True)
+    sys.exit(0 if out.status == "verified" else 1)
+
+
+@main.command("bench")
+@click.option("--task", "tasks", multiple=True, help="Only these corpus tasks (repeatable; default: all).")
+@click.option("--tasks", "tasks_csv", default=None, help="Comma-separated task names (alternative to --task).")
+@click.option("--out-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
+              help="Where <task>/solution.py files are written (default: numguard-bench/<model>).")
+@click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
+@click.option("--timeout", type=float, default=300, show_default=True, help="Seconds to grade each task.")
+@_llm_options
+def bench_cmd(tasks: tuple[str, ...], tasks_csv: str | None, out_dir: Path | None, json_out: Path | None,
+              corpus_dir: Path | None, timeout: float, provider: str | None, model: str | None,
+              base_url: str | None, reasoning_effort: str | None) -> None:
+    """(agent) Benchmark an LLM on the bug corpus: one solution per task, graded by numguard.
+
+    Prints a leaderboard row (model, pass@1, happy-path pass, per-task
+    reasons) and the per-task table. Solutions are statically checked and
+    graded in a subprocess.
+    """
+    import re  # noqa: PLC0415
+
+    from .agent.bench import run_bench  # noqa: PLC0415
+
+    names = list(tasks) + [t.strip() for t in (tasks_csv or "").split(",") if t.strip()]
+    known = list_tasks(corpus_dir)
+    for t in names:
+        if t not in known:
+            raise click.UsageError(f"unknown task {t!r}; known tasks: {', '.join(known)}")
+    llm = _make_llm(provider, model, base_url, reasoning_effort)
+    out_dir = out_dir or Path("numguard-bench") / re.sub(r"[^A-Za-z0-9_.-]+", "-", llm.model)
+    res = run_bench(llm, tasks=names or None, solutions_dir=out_dir,
+                    corpus=str(corpus_dir) if corpus_dir else None, timeout=timeout,
+                    log=lambda m: click.echo(m, err=True))
+    _echo_usage(res.usage)
+    click.echo(res.table())
+    click.echo("")
+    click.echo("| model | pass@1 | happy-path | failures |")
+    click.echo("|---|---|---|---|")
+    click.echo(res.leaderboard_row())
+    data = res.to_dict()
+    if json_out is not None:
+        json_out.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    click.echo(json.dumps({k: data[k] for k in ("model", "n_tasks", "n_pass", "pass_at_1", "n_happy_path_pass")}))
+
+
+@main.group("agent")
+def agent_group() -> None:
+    """(agent) The CI split: `propose` (holds the key, runs no repository code) and `verify` (no key)."""
+
+
+@agent_group.command("propose")
+@click.option("--config", "config_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--result", "result_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="result.json of the check job (validated; treated as untrusted data).")
+@click.option("--repo", type=click.Path(exists=True, file_okay=False, path_type=Path), default=Path("."),
+              show_default=True, help="Checkout of the pull request, read as DATA (never imported or run).")
+@click.option("--out-dir", type=click.Path(file_okay=False, path_type=Path), required=True,
+              help="Candidates directory (manifest.json + cand_<n>.py).")
+@click.option("--max-targets", type=click.IntRange(1, 50), default=None,
+              help="Failing targets to try (default: [agent] max_targets, 3).")
+@_llm_options
+def agent_propose_cmd(config_path: Path, result_path: Path, repo: Path, out_dir: Path, max_targets: int | None,
+                      provider: str | None, model: str | None, base_url: str | None,
+                      reasoning_effort: str | None) -> None:
+    """Ask the model for rewrites of failing targets. Executes nothing from the repository."""
+    from .agent.ci import propose  # noqa: PLC0415
+    from .ci import load_validated  # noqa: PLC0415
+    from .config import ConfigError, load_config  # noqa: PLC0415
+    from .result import ResultValidationError  # noqa: PLC0415
+
+    try:
+        config = load_config(config_path)
+        result = load_validated(result_path)
+    except (ConfigError, ResultValidationError, ValueError, OSError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if not config.agent.enabled:
+        click.echo("numguard agent: [agent] enabled = true is not set in the configuration; nothing to do")
+        return
+    llm = _make_llm(provider, model, base_url, reasoning_effort)
+    manifest = propose(config, result, repo, out_dir, llm, max_targets=max_targets,
+                       log=lambda m: click.echo(m, err=True))
+    n = sum(c["status"] == "submitted" for c in manifest["candidates"])
+    click.echo(f"numguard agent propose: {n} candidate rewrite(s) in {out_dir}")
+
+
+@agent_group.command("verify")
+@click.option("--candidates", "cand_dir", required=True, type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--config", "config_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--result", "result_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--repo", type=click.Path(exists=True, file_okay=False, path_type=Path), default=Path("."),
+              show_default=True, help="Checkout of the pull request (its code runs here: use a job without secrets).")
+@click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), required=True,
+              help="Updated result.json (with `fixes`).")
+@click.option("--card-out", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--timeout", type=float, default=None, help="Seconds per subprocess check (default: [agent] timeout).")
+def agent_verify_cmd(cand_dir: Path, config_path: Path, result_path: Path, repo: Path, json_out: Path,
+                     card_out: Path | None, timeout: float | None) -> None:
+    """Run every candidate rewrite against its target's checks; add `fixes` to result.json. Uses no LLM."""
+    from .agent.ci import ManifestError, verify  # noqa: PLC0415
+    from .card import render_card  # noqa: PLC0415
+    from .ci import load_validated  # noqa: PLC0415
+    from .config import ConfigError, load_config  # noqa: PLC0415
+    from .result import ResultValidationError  # noqa: PLC0415
+
+    try:
+        config = load_config(config_path)
+        result = load_validated(result_path)
+        doc = verify(cand_dir, config, result, repo, timeout=timeout, log=lambda m: click.echo(m, err=True))
+    except (ConfigError, ResultValidationError, ManifestError, ValueError, OSError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    json_out.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    if card_out is not None:
+        card_out.write_text(render_card(doc), encoding="utf-8")
+    for f in doc["fixes"] or []:
+        click.echo(f"numguard agent verify: {f['target']}: {f['status']} "
+                   f"({f['before_failures']} -> {f['after_failures'] if f['after_failures'] is not None else '-'})")
+
+
 if __name__ == "__main__":  # pragma: no cover
     main()
