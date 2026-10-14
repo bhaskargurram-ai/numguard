@@ -93,7 +93,7 @@ inputs:
     required: false
     default: ""
   numguard-version:
-    description: "Advanced: pip requirement to install instead of this action's own source."
+    description: "Advanced: pip requirement to install instead of this action's own source, e.g. numguard-ci==1.0.0."
     required: false
     default: ""
 

@@ -179,12 +179,12 @@ is an error. numguard's own test suite exercises the adapters with fake
 2^-7, smallest normal 2^-126, smallest subnormal 2^-133) to build cases, stores
 them as float32 values that are exactly representable in bfloat16, and hands
 them to the function as `torch.bfloat16`, `jax.numpy.bfloat16` or (NumPy
-backend) `ml_dtypes.bfloat16` arrays (`pip install 'numguard[bfloat16]'`).
+backend) `ml_dtypes.bfloat16` arrays (`pip install 'numguard-ci[bfloat16]'`).
 Default tolerance: `rtol = 6e-2`; ULP errors are in bfloat16 units.
 
 ## Hypothesis strategies
 
-`numguard.strategies` (optional; `pip install 'numguard[hypothesis]'`) turns a
+`numguard.strategies` (optional; `pip install 'numguard-ci[hypothesis]'`) turns a
 spec into Hypothesis strategies:
 
 ```python

@@ -45,7 +45,7 @@ def _hypothesis() -> tuple[Any, Any]:
         from hypothesis import strategies as st  # noqa: PLC0415 - optional dependency
         from hypothesis.extra import numpy as hnp  # noqa: PLC0415
     except ImportError as exc:  # pragma: no cover - exercised only without hypothesis
-        raise ImportError("numguard.strategies needs Hypothesis: pip install 'numguard[hypothesis]'") from exc
+        raise ImportError("numguard.strategies needs Hypothesis: pip install 'numguard-ci[hypothesis]'") from exc
     return st, hnp
 
 

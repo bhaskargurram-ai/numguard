@@ -12,7 +12,7 @@
   <a href="https://github.com/bhaskargurram-ai/numguard/actions/workflows/ci.yml"><img src="https://github.com/bhaskargurram-ai/numguard/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <a href="https://github.com/bhaskargurram-ai/numguard/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue" alt="Python 3.10 to 3.13">
-  <img src="https://img.shields.io/badge/version-1.0.0-informational" alt="Version 1.0.0">
+  <a href="https://pypi.org/project/numguard-ci/"><img src="https://img.shields.io/pypi/v/numguard-ci" alt="PyPI: numguard-ci"></a>
   <img src="https://img.shields.io/badge/agent-experimental-orange" alt="Agent: experimental">
 </p>
 
@@ -104,11 +104,11 @@ An LLM never decides a result. The [agent](#agent-experimental) can draft a spec
 ### 1. Install
 
 ```bash
-pip install numguard                                                              # once 1.0.0 is on PyPI
-pip install "numguard @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"   # or straight from GitHub
+pip install numguard-ci                                                              # the command and the import are `numguard`
+pip install "numguard-ci @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.0"   # or straight from GitHub
 ```
 
-The only runtime dependencies are NumPy and click. Extras: `numguard[pytest]`, `numguard[scipy]`, `numguard[mpmath]` (arbitrary-precision references), `numguard[hypothesis]` ([strategies](#hypothesis-strategies)), `numguard[bfloat16]` (`ml_dtypes`), `numguard[dev]` (everything for working on numguard). Python 3.10 or newer.
+The only runtime dependencies are NumPy and click. Extras: `numguard-ci[pytest]`, `numguard-ci[scipy]`, `numguard-ci[mpmath]` (arbitrary-precision references), `numguard-ci[hypothesis]` ([strategies](#hypothesis-strategies)), `numguard-ci[bfloat16]` (`ml_dtypes`), `numguard-ci[dev]` (everything for working on numguard). Python 3.10 or newer.
 
 ### 2. Check a function
 
@@ -457,11 +457,11 @@ Cases are always generated, and results always compared, in NumPy. With `backend
 
 These libraries are optional and not installed with numguard. numguard's own tests exercise the adapters with fake `torch` and `jax` modules; the real libraries are not part of its CI.
 
-**bfloat16.** `dtypes = ["bfloat16"]` builds cases from bfloat16's own limits (max about 3.39e38, eps 2^-7) and hands them to the function as `torch.bfloat16`, `jax.numpy.bfloat16` or, on the NumPy backend, `ml_dtypes.bfloat16` arrays (`pip install "numguard[bfloat16]"`). Default rtol is 6e-2 and ULPs are counted in bfloat16 units.
+**bfloat16.** `dtypes = ["bfloat16"]` builds cases from bfloat16's own limits (max about 3.39e38, eps 2^-7) and hands them to the function as `torch.bfloat16`, `jax.numpy.bfloat16` or, on the NumPy backend, `ml_dtypes.bfloat16` arrays (`pip install "numguard-ci[bfloat16]"`). Default rtol is 6e-2 and ULPs are counted in bfloat16 units.
 
 ## Hypothesis strategies
 
-If you already use [Hypothesis](https://hypothesis.readthedocs.io/), `numguard.strategies` turns a numguard spec into strategies (`pip install "numguard[hypothesis]"`; numguard itself does not depend on Hypothesis):
+If you already use [Hypothesis](https://hypothesis.readthedocs.io/), `numguard.strategies` turns a numguard spec into strategies (`pip install "numguard-ci[hypothesis]"`; numguard itself does not depend on Hypothesis):
 
 ```python
 from hypothesis import given

@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [1.0.0] - 2026-10-14
 
+Published on PyPI as **`numguard-ci`** (`pip install numguard-ci`), because the name
+`numguard` is taken there. The command, the import (`import numguard`) and the
+GitHub repository keep the name `numguard`.
+
 ### Added
 
 - **`numguard.toml` and `numguard check --config`.** `[[target]]` tables

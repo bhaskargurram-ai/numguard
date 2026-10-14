@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "numguard"
+name = "numguard-ci"
 version = "1.0.0"
 description = "Numerical edge-case testing for array code: catch the NaNs, overflows and precision bugs that happy-path tests miss, in pytest and CI, with an optional agent whose fixes are verified by execution."
 readme = "README.md"
