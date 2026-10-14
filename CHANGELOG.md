@@ -4,6 +4,87 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-10-14
+
+### Added
+
+- **`numguard.toml` and `numguard check --config`.** `[[target]]` tables
+  describe how to check a function without decorators (`function`, `inputs`,
+  `dtypes`, `properties`, `reference` as a restricted Python expression with
+  `reference_precision` `float64`/`longdouble`/`mpmath`, or
+  `reference_function`, tolerances, `nan`, `bounds`, `monotonic`, `batched`,
+  `fp_signals`, `out_dtype`, `kwargs`, `backend`, ...), with `[defaults]`, an
+  optional `[pytest]` run and `[agent]` settings. Unknown keys are errors and
+  API keys are refused. `check` without a target uses `./numguard.toml`;
+  `--target`, `--root`, `--json-out`, `--card-out`, `--fail-on`,
+  `--no-pytest` and `--pr-number/--head-sha/--base-sha` support CI.
+- **result.json, the card and its data block.** `check --json-out` writes a
+  versioned result document; `numguard summary` writes the Markdown card to
+  the job summary and `numguard comment` upserts one sticky PR comment (bot
+  author check, `--expect-head-sha`, a warning when the PR changes workflows,
+  `numguard.toml` or the test harness, optional `numguard: pass|fail|error`
+  labels). The card is re-rendered from a strictly validated result, escapes
+  everything that can come from the PR, and ends with a
+  `<!-- numguard:data {...} -->` block (`numguard.carddata.parse_card_data`).
+- **GitHub integration.** A composite `action.yml` (`check`, `summary`,
+  `comment`, `agent-propose`, `agent-verify`) and reusable workflows:
+  `check.yml` (unprivileged `pull_request` job; numguard installed from its
+  own repository before PR code; config read from the base commit),
+  `comment.yml` (privileged `workflow_run` job that never runs PR code) and
+  `agent.yml` (gate / propose / verify). `numguard init [--agent]` writes the
+  caller workflows and a commented `numguard.toml`; `examples/` is exactly
+  what `init` writes. Workflow security invariants are tested.
+- **Agent (experimental, bring your own key).** `numguard suggest` lets an
+  LLM write a spec (read-only tools: the function, repository files, grep,
+  numguard's catalogue); the spec is validated strictly and run in a
+  subprocess, and a reference that disagrees with the function on benign
+  inputs is marked *suspect* instead of reported as bugs. Output: a
+  `@numguard.guard(...)` decorator, a `[[target]]` table and a runnable spec
+  file (`--write spec.py|numguard.toml`). `numguard fix` lets an LLM rewrite a
+  failing function and verifies the rewrite by executing it: same signature,
+  every originally failing check passes, no new failures, agreement with the
+  original on benign inputs, unchanged shapes and dtypes there; up to
+  `--rounds` refinement rounds; a unified diff and a before/after table;
+  `--apply` writes only verified rewrites. `numguard bench` runs a model on
+  the 12 corpus tasks and prints a leaderboard row (pass@1, happy-path pass,
+  per-task reasons) and JSON. `numguard agent propose` / `agent verify` split
+  the work for CI. Model-written code passes a static denylist and runs only
+  in a subprocess worker with a timeout and a scrubbed environment. The
+  tool-use client (Anthropic Messages and OpenAI-compatible chat completions,
+  retries, token and cost accounting) is configured with `NUMGUARD_LLM_*`
+  environment variables; there is no default model.
+- **Backends.** `backend="torch"|"jax"|"cupy"` (`--backend`,
+  `--numguard-backend`, `backend = ...` in the config): cases are generated
+  and compared in NumPy, inputs converted to the backend's arrays and
+  outputs back, with backend dtypes reported to the dtype check.
+- **bfloat16** as a dtype under test (emulated: bfloat16 limits, values
+  stored as representable float32, bfloat16 tolerances and ULPs; the NumPy
+  backend needs `ml_dtypes`).
+- **`numguard.strategies`**: Hypothesis strategies (`cases`, `edge_cases`,
+  `random_inputs`, `inputs_for`) that draw from the edge-case catalogue and
+  from random in-domain arrays. Hypothesis is optional.
+- `numguard.resolve` (import a target, or locate its source without
+  importing), `Report.grouped_failures()`, `Report.backend`.
+- Release engineering: CI packaging job (build, `twine check`, install the
+  wheel into a fresh virtualenv, smoke-test outside the checkout),
+  `release.yml` (PyPI trusted publishing; GitHub release from this file),
+  `pages.yml`; docs/AGENT.md, docs/SECURITY_MODEL.md, docs/TESTING.md,
+  docs/CONFIG.md, docs/CLI.md and docs/GITHUB.md.
+
+### Changed
+
+- `numguard check TARGET` is unchanged; `TARGET` is now optional (config mode).
+- `--dtype` accepts `bfloat16`.
+- New dependency on Python 3.10 only: `tomli` (the standard `tomllib`
+  backport) for reading `numguard.toml`.
+- The `dev` extra also installs Hypothesis and PyYAML; new extras
+  `hypothesis` and `bfloat16`.
+
+### Fixed
+
+- `module:function` targets with a one-letter module name (for example
+  `m:f`) were mistaken for Windows drive letters.
+
 ## [0.1.0] - 2026-10-13
 
 First release.

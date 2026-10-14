@@ -101,8 +101,8 @@ def _headline(result: dict[str, Any]) -> str:
             if targets else "✅ pytest passed"
     parts = []
     if n_fail:
-        parts.append(f"{n_fail} of {len(targets)} target{'s' if len(targets) != 1 else ''} fail numerical "
-                     "edge-case checks")
+        parts.append(f"{n_fail} of {len(targets)} target{'s' if len(targets) != 1 else ''} "
+                     f"fail{'s' if n_fail == 1 else ''} numerical edge-case checks")
     if n_err:
         parts.append(f"{n_err} target{'s' if n_err != 1 else ''} could not be checked")
     if py and py["status"] != "pass":
@@ -193,6 +193,8 @@ def _fix_sections(result: dict[str, Any]) -> list[str]:
         out.append(f"**{escape_md(f['target'], 60)}**: {label} · failing results {f['before_failures']} → {after}"
                    + (f" · {f['rounds']} round{'s' if f['rounds'] != 1 else ''}" if f.get("rounds") else "")
                    + (f" · model {code(f['model'], 60)}" if f.get("model") else ""))
+        if f.get("rationale"):
+            out.append(f"> _model's explanation (not verified)_: {escape_md(f['rationale'], 300)}")
         for r in f.get("reasons", [])[:5]:
             out.append(f"> {escape_md(r, 300)}")
         if f.get("diff"):

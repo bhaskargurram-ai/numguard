@@ -130,6 +130,28 @@ class PytestPluginTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
         self.assertIn("large_n", proc.stdout)
 
+    def test_backend_option(self):
+        self.write_test("""
+            import numpy as np
+            import pytest
+
+            def absval(x):
+                return np.abs(x)
+
+            @pytest.mark.numguard(fn=absval, reference=np.abs)
+            def test_abs():
+                pass
+        """)
+        proc = run_pytest(self.tmp, "--numguard-backend", "numpy")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        # torch is not installed in the test environment: the backend error surfaces
+        import importlib.util as ilu
+
+        if ilu.find_spec("torch") is None:
+            proc = run_pytest(self.tmp, "--numguard-backend", "torch")
+            self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+            self.assertIn("backend 'torch' is not installed", proc.stdout + proc.stderr)
+
     def test_bad_marker_usage(self):
         self.write_test("""
             import pytest

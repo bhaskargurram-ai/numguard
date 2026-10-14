@@ -556,11 +556,12 @@ def _write_suggestion(path: Path, out: Any, force: bool) -> None:
     click.echo(f"wrote {path}", err=True)
 
 
-def _fix_spec(target: str, spec: Path | None, config_path: Path | None) -> tuple[str, dict[str, Any]]:
+def _fix_spec(target: str, spec: Path | None, config_path: Path | None) -> tuple[str, dict[str, Any], Any]:
+    """(function, worker spec request, [agent] settings or None)."""
     from .config import ConfigError, find_config, load_config  # noqa: PLC0415
 
     if spec is not None and spec.suffix == ".py":
-        return target, {"source": "pyfile", "pyfile": str(spec.resolve())}
+        return target, {"source": "pyfile", "pyfile": str(spec.resolve())}, None
     cfg_path = spec if spec is not None else (config_path or find_config())
     if cfg_path is not None:
         try:
@@ -570,10 +571,10 @@ def _fix_spec(target: str, spec: Path | None, config_path: Path | None) -> tuple
         for t in cfg.targets:
             if target in (t["name"], t["function"]):
                 doc = {k: v for k, v in t.items() if k not in ("name", "function")}
-                return t["function"], {"source": "doc", "doc": doc}
+                return t["function"], {"source": "doc", "doc": doc}, cfg.agent
         if spec is not None or config_path is not None:
             raise click.UsageError(f"{cfg_path} has no target named {target!r}")
-    return target, {"source": "guard"}
+    return target, {"source": "guard"}, None
 
 
 @main.command("fix")
@@ -583,17 +584,19 @@ def _fix_spec(target: str, spec: Path | None, config_path: Path | None) -> tuple
 @click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None,
               help="numguard.toml holding TARGET (by name or function). Default: ./numguard.toml if it has it, "
                    "else the function's @numguard.guard spec.")
-@click.option("--rounds", type=click.IntRange(1, 10), default=3, show_default=True,
-              help="Refinement rounds: a rejected rewrite's failure table goes back to the model.")
+@click.option("--rounds", type=click.IntRange(1, 10), default=None,
+              help="Refinement rounds: a rejected rewrite's failure table goes back to the model "
+                   "(default: [agent] rounds of the config, else 3).")
 @click.option("--apply", "apply_", is_flag=True, help="Write a VERIFIED rewrite into the source file.")
 @click.option("--root", type=click.Path(file_okay=False, path_type=Path), default=Path("."), show_default=True)
 @click.option("--timeout", type=float, default=120, show_default=True,
               help="Seconds for each subprocess check (original and every rewrite).")
-@click.option("--max-tool-calls", type=click.IntRange(1, 200), default=25, show_default=True)
+@click.option("--max-tool-calls", type=click.IntRange(1, 200), default=None,
+              help="Read-only tool calls per conversation (default: [agent] max_tool_calls, else 25).")
 @click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), default=None)
 @_llm_options
-def fix_cmd(target: str, spec: Path | None, config_path: Path | None, rounds: int, apply_: bool, root: Path,
-            timeout: float, max_tool_calls: int, json_out: Path | None, provider: str | None, model: str | None,
+def fix_cmd(target: str, spec: Path | None, config_path: Path | None, rounds: int | None, apply_: bool,
+            root: Path, timeout: float, max_tool_calls: int | None, json_out: Path | None, provider: str | None, model: str | None,
             base_url: str | None, reasoning_effort: str | None) -> None:
     """(agent) Let an LLM rewrite a failing function; numguard verifies the rewrite by executing it.
 
@@ -606,7 +609,9 @@ def fix_cmd(target: str, spec: Path | None, config_path: Path | None, rounds: in
     from .agent.fix import before_after_rows, run_fix  # noqa: PLC0415
     from .report import format_table  # noqa: PLC0415
 
-    function, spec_req = _fix_spec(target, spec, config_path)
+    function, spec_req, settings = _fix_spec(target, spec, config_path)
+    rounds = rounds or (settings.rounds if settings else 3)
+    max_tool_calls = max_tool_calls or (settings.max_tool_calls if settings else 25)
     llm = _make_llm(provider, model, base_url, reasoning_effort)
     try:
         out = run_fix(function, llm=llm, root=root, spec_req=spec_req, rounds=rounds, timeout=timeout,

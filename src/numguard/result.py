@@ -50,22 +50,34 @@ def overall_status(statuses: Sequence[str]) -> str:
     return "pass"
 
 
+def _cap(v: Any, limit: int) -> Any:
+    if v is None:
+        return None
+    s = str(v)
+    return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
+_ROW_LIMITS = {"check": 80, "case": 80, "dtypes": 60, "rel_err": 20, "ulp": 20, "detail": 400}
+
+
 def target_entry(outcome: Any, max_rows: int = MAX_FAILURE_ROWS) -> dict[str, Any]:
-    """A result.json target entry from a :class:`numguard.runconfig.TargetOutcome`."""
+    """A result.json target entry from a :class:`numguard.runconfig.TargetOutcome` (fields capped
+    to the limits :func:`validate_result` enforces)."""
     rep = outcome.report
+    rows = rep.grouped_failures()[:max_rows] if rep is not None else []
     entry: dict[str, Any] = {
-        "name": outcome.name,
-        "function": outcome.function,
+        "name": _cap(outcome.name, 80),
+        "function": _cap(outcome.function, 300),
         "status": outcome.status,
-        "error": outcome.error,
+        "error": _cap(outcome.error, 600),
         "n_cases": rep.n_cases if rep is not None else 0,
         "n_results": len(rep.results) if rep is not None else 0,
         "n_failures": len(rep.failures) if rep is not None else 0,
         "dtypes": list(rep.dtypes) if rep is not None else [],
-        "reference": rep.reference if rep is not None else None,
+        "reference": _cap(rep.reference, 200) if rep is not None else None,
         "backend": rep.backend if rep is not None else None,
-        "failed_checks": rep.failed_checks() if rep is not None else [],
-        "failures": rep.grouped_failures()[:max_rows] if rep is not None else [],
+        "failed_checks": [_cap(c, 80) for c in rep.failed_checks()][:60] if rep is not None else [],
+        "failures": [{k: _cap(r.get(k, ""), lim) for k, lim in _ROW_LIMITS.items()} for r in rows],
         "duration_s": round(float(outcome.duration_s), 3),
     }
     return entry
@@ -91,7 +103,7 @@ def build_result(run: Any, *, pr_number: int | None = None, head: str | None = N
         "targets": [target_entry(t) for t in run.targets],
         "pytest": py,
         "fixes": fixes,
-        "notes": list(run.notes),
+        "notes": [_cap(n, 500) for n in run.notes][:20],
     }
     return doc
 

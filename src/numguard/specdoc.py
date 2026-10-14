@@ -36,7 +36,6 @@ import importlib
 import json
 import math
 import re
-from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
 from .backends import BACKENDS

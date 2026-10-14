@@ -667,7 +667,7 @@ def generate_cases(
     seen: set[tuple] = set()
 
     for dt_name in dtypes:
-        work = storage_dtype(dt_name)
+        storage_dtype(dt_name)  # validates the dtype name
         arg_names_dt = [dtype_name(s.dtype) if s.dtype is not None else dt_name for s in inputs]
         arg_dtypes = [storage_dtype(n) for n in arg_names_dt]
 

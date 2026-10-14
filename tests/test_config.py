@@ -330,6 +330,20 @@ class CheckConfigCommandTests(unittest.TestCase):
         res = self.invoke("--no-pytest")
         self.assertEqual(res.exit_code, 0, res.output)
 
+    def test_single_target_outputs_and_long_names(self):
+        deep = self.tmp / ("d" * 60) / ("e" * 60)
+        deep.mkdir(parents=True)
+        shutil.copy(h.CORPUS / "logsumexp" / "buggy.py", deep / "lse_naive_implementation.py")
+        target = f"{deep / 'lse_naive_implementation.py'}:logsumexp"
+        out, card = self.tmp / "single.json", self.tmp / "single.md"
+        res = self.runner.invoke(main, ["check", target, "--ref", "scipy.special:logsumexp",
+                                        "--json-out", str(out), "--card-out", str(card)])
+        self.assertEqual(res.exit_code, 1, res.output)
+        doc = validate_result(json.loads(out.read_text()))
+        self.assertLessEqual(len(doc["targets"][0]["name"]), 80)
+        self.assertEqual(doc["status"], "fail")
+        self.assertIn("1 of 1 target fails", card.read_text())
+
     def test_root_option_resolves_relative_paths(self):
         cfg = self.tmp / "elsewhere.toml"
         cfg.write_text('[[target]]\nfunction = "corpus/logsumexp/reference.py:logsumexp"\n'

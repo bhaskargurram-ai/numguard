@@ -112,8 +112,8 @@ def parse_config(data: Mapping[str, Any], path: Path | None = None) -> Config:
                           "(allowed: [defaults], [[target]], [pytest], [agent])")
     defaults_raw = data.get("defaults", {})
     try:
-        defaults = validate_spec_doc(defaults_raw, allowed=tuple(k for k in TARGET_KEYS if k not in ("name", "function")),
-                                     where="defaults")
+        validate_spec_doc(defaults_raw, allowed=tuple(k for k in TARGET_KEYS if k not in ("name", "function")),
+                          where="defaults")
     except SpecDocError as exc:
         raise ConfigError(str(exc)) from exc
     raw_targets = data.get("target", [])
