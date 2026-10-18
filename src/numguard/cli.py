@@ -390,6 +390,57 @@ def eval_cmd(candidate_dir: Path | None, baseline: str | None, tasks: tuple[str,
     sys.exit(0 if ok else 1)
 
 
+@main.command("scan")
+@click.argument("module")
+@click.option("--ref", "reference_module", metavar="MODULE", default=None,
+              help="Module with trusted functions of the same names, used as references "
+                   "(e.g. scipy.special when scanning jax.scipy.special).")
+@click.option("--backend", type=click.Choice(BACKENDS), default="numpy", show_default=True,
+              help="Array library the module's functions expect.")
+@click.option("--dtype", "dtypes", multiple=True, type=click.Choice(ALL_FLOAT_DTYPES),
+              help="Floating dtype to test (repeatable). Default: float32, float64.")
+@click.option("--include", multiple=True, metavar="REGEX", help="Only functions whose name matches (repeatable).")
+@click.option("--exclude", multiple=True, metavar="REGEX", help="Skip functions whose name matches (repeatable).")
+@click.option("--budget", type=float, default=30.0, show_default=True,
+              help="Seconds per function after which further dtypes are skipped.")
+@click.option("--json", "as_json", is_flag=True, help="Print the scan result as JSON.")
+@click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Also write the JSON result here.")
+@click.option("--fail-on-flag", is_flag=True, help="Exit 1 if any function has a failing check.")
+@click.option("--max-rows", type=int, default=50, show_default=True)
+def scan_cmd(module: str, reference_module: str | None, backend: str, dtypes: tuple[str, ...],
+             include: tuple[str, ...], exclude: tuple[str, ...], budget: float, as_json: bool,
+             json_out: Path | None, fail_on_flag: bool, max_rows: int) -> None:
+    """Check every public numerical function of MODULE.
+
+    Each function's arity, input domain and whether it is elementwise are
+    worked out by probing it. Results are candidates to triage, not bug
+    reports: check each finding against the documentation and the latest
+    release first.
+    """
+    from .scan import scan_module  # noqa: PLC0415
+
+    def progress(name: str) -> None:
+        if not as_json:
+            click.echo(f"  checking {name} ...", err=True)
+
+    try:
+        res = scan_module(module, reference_module=reference_module, backend=backend,
+                          dtypes=dtypes or ("float32", "float64"), include=include, exclude=exclude,
+                          budget_s=budget, progress=progress)
+    except ImportError as exc:
+        raise click.ClickException(f"cannot import: {exc}") from exc
+    doc = res.to_dict()
+    if json_out is not None:
+        json_out.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    if as_json:
+        click.echo(json.dumps(doc, indent=2))
+    else:
+        click.echo(res.summary(max_rows))
+    if fail_on_flag and res.flagged:
+        sys.exit(1)
+
+
 @main.command("tasks")
 @click.option("--corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--show", metavar="TASK", default=None, help="Print one task's prompt.")

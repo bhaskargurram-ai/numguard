@@ -171,6 +171,15 @@ pytest --numguard-modules mypkg.ops       # every @numguard.guard function becom
 
 Notebooks work the same way as scripts: `numguard.check(...).summary()` prints the table in a cell.
 
+### Or scan a whole module
+
+```bash
+numguard scan scipy.special --include '^(expit|logit|ndtri|xlogy)$'
+numguard scan jax.scipy.special --ref scipy.special --backend jax --json-out scan.json
+```
+
+`numguard scan` finds a module's public functions and works out, by probing each one, how many array arguments it takes (1 to 3), a domain where it returns finite values (`any`, `positive` or `unit_interval`) and whether it is elementwise. It then runs the edge-case catalogue on each. With `--ref`, a function of the same name in the reference module is the reference, and the reference also decides whether a function counts as elementwise: an element that changes with its neighbours, which is the bug the `isolation` check looks for, would otherwise make the function look non-elementwise. Without `--ref`, the `finite` check is off, because nothing says whether an inf on a huge input is right. Flagged functions are candidates to triage against the documentation and the latest release, not bug reports.
+
 ### 4. Add it to CI
 
 From the root of your repository:
@@ -856,7 +865,7 @@ So that no single job both runs PR code and holds a secret or a write token. A s
 
 ## Roadmap
 
-- Gradient checks: `jax.grad` / `torch.autograd` outputs at domain boundaries and support edges
+- Gradient checks for functions with several outputs, and at support edges of distributions
 - Accelerator dtypes and modes: `float8` variants and TF32-style reduced-precision matmul
 - Shrinking of failing cases, and exporting them as FPCore for Herbie
 - More corpus tasks: matrix ops, special functions, quantiles, numerically stable losses

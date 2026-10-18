@@ -65,6 +65,11 @@ jobs:
       # in the test job, where neither library is installed.
       - name: Gradient and isolation tests on real JAX and PyTorch
         run: python -m pytest -q -rs tests/test_isolation_grad.py --junitxml=backend-junit.xml
+      - name: Scan smoke test on JAX
+        run: |
+          numguard scan jax.scipy.special --ref scipy.special --backend jax \
+            --include '^(expit|logit|erf|gammaln)$' --json-out jax-scan.json
+          python -c "import json; d = json.load(open('jax-scan.json')); assert d['n_checked'] == 4, d"
       - name: Report failures as annotations
         if: failure()
         run: |
