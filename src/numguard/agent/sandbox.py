@@ -202,7 +202,8 @@ def run_worker(request: Mapping[str, Any], *, timeout: float = 120, cwd: str | o
             kwargs["start_new_session"] = True
         try:
             proc = subprocess.Popen(cmd, cwd=cwd, env=child_env, stdout=subprocess.PIPE,  # noqa: S603
-                                    stderr=subprocess.PIPE, text=True, **kwargs)
+                                    stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                                    errors="replace", **kwargs)
         except OSError as exc:
             return WorkerResult(False, {}, f"cannot start worker: {exc}", duration_s=time.perf_counter() - t0)
         try:

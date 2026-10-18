@@ -103,9 +103,9 @@ class SuggestTests(unittest.TestCase):
             self.assertEqual(res.exit_code, 1, res.output)  # the naive function fails its checks
             self.assertIn("reference: consistent", res.output)
             self.assertIn("# --- decorator", res.output)
-            text = (self.repo.root / "spec_lse.py").read_text()
+            text = (self.repo.root / "spec_lse.py").read_text(encoding="utf-8")
             self.assertIn("from numops import logsumexp", text)
-            self.assertEqual(json.loads((self.repo.root / "s.json").read_text())["reference_status"], "consistent")
+            self.assertEqual(json.loads((self.repo.root / "s.json").read_text(encoding="utf-8"))["reference_status"], "consistent")
             # the written spec file is itself a runnable test, and `fix --spec` accepts it
             ns: dict = {"__name__": "spec_lse"}
             sys.path.insert(0, str(self.repo.root))

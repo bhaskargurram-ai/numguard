@@ -102,9 +102,9 @@ class EvalHarnessTests(unittest.TestCase):
             (tmp / "logsumexp").mkdir()
             shutil.copy(h.CORPUS / "logsumexp" / "reference.py", tmp / "logsumexp" / "solution.py")
             (tmp / "softmax").mkdir()
-            (tmp / "softmax" / "solution.py").write_text("raise RuntimeError('boom')\n")
+            (tmp / "softmax" / "solution.py").write_text("raise RuntimeError('boom')\n", encoding="utf-8")
             (tmp / "hypot").mkdir()
-            (tmp / "hypot" / "solution.py").write_text("def not_hypot(x, y):\n    return x\n")
+            (tmp / "hypot" / "solution.py").write_text("def not_hypot(x, y):\n    return x\n", encoding="utf-8")
             res = run_eval(candidate_dir=tmp, tasks=["logsumexp", "softmax", "hypot", "sigmoid"])
             status = {r.task: r.status for r in res.results}
             self.assertEqual(status, {"logsumexp": "pass", "softmax": "error",

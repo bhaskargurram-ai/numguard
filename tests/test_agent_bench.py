@@ -19,7 +19,7 @@ from numguard.cli import main
 
 
 def corpus(task: str, which: str) -> str:
-    return (h.CORPUS / task / f"{which}.py").read_text()
+    return (h.CORPUS / task / f"{which}.py").read_text(encoding="utf-8")
 
 
 class BenchTests(unittest.TestCase):
@@ -79,7 +79,7 @@ class BenchTests(unittest.TestCase):
                                             "--json-out", str(out)])
         self.assertEqual(res.exit_code, 0, res.output)
         self.assertIn("| model | pass@1 | happy-path | failures |", res.output)
-        self.assertEqual(json.loads(out.read_text())["n_pass"], 2)
+        self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["n_pass"], 2)
         res = CliRunner().invoke(main, ["bench", "--task", "nope", "--model", "m"])
         self.assertEqual(res.exit_code, 2)
 

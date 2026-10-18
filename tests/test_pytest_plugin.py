@@ -31,7 +31,7 @@ def run_pytest(tmp: Path, *args: str) -> subprocess.CompletedProcess:
         [sys.executable, "-m", "pytest", "-p", "numguard.pytest_plugin", "-q",
          "-p", "no:cacheprovider", *args],
         cwd=tmp, capture_output=True, text=True, env=env, check=False, timeout=300,
-    )
+    encoding="utf-8", errors="replace",)
 
 
 @unittest.skipUnless(HAS_PYTEST, "pytest is not installed")
@@ -52,13 +52,13 @@ class PytestPluginTests(unittest.TestCase):
 
             def not_guarded(x):
                 return x
-        """))
+        """), encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
     def write_test(self, body: str) -> None:
-        (self.tmp / "test_generated.py").write_text(textwrap.dedent(body))
+        (self.tmp / "test_generated.py").write_text(textwrap.dedent(body), encoding="utf-8")
 
     def test_marker_failure_shows_summary_table(self):
         self.write_test("""
@@ -167,7 +167,7 @@ class PytestPluginTests(unittest.TestCase):
 
 class PluginModuleWithoutPytestTests(unittest.TestCase):
     def test_entry_point_declared(self):
-        text = (h.ROOT / "pyproject.toml").read_text()
+        text = (h.ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('[project.entry-points.pytest11]', text)
         self.assertIn('numguard = "numguard.pytest_plugin"', text)
 

@@ -111,8 +111,8 @@ HANGS = textwrap.dedent('''
 class Repo:
     def __init__(self):
         self.root = Path(tempfile.mkdtemp(prefix="numguard-agent-test-"))
-        (self.root / "numops.py").write_text(MODULE)
-        (self.root / "numguard.toml").write_text(CONFIG)
+        (self.root / "numops.py").write_text(MODULE, encoding="utf-8")
+        (self.root / "numguard.toml").write_text(CONFIG, encoding="utf-8")
         _forget()
 
     @property

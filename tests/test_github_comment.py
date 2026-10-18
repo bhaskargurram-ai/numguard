@@ -28,7 +28,7 @@ class CommentCommandTests(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         self.result = self.tmp / "result.json"
-        self.result.write_text(json.dumps(base_result()))
+        self.result.write_text(json.dumps(base_result()), encoding="utf-8")
         self.gh = FakeGitHub()
         patcher = mock.patch.object(github_api, "urllib_transport", self.gh)
         patcher.start()
@@ -83,11 +83,11 @@ class CommentCommandTests(unittest.TestCase):
 
     def test_invalid_inputs(self):
         self.assertNotEqual(self.comment("--pr", "12abc").exit_code, 0)
-        self.result.write_text(json.dumps(base_result(status="pass")))  # forged overall status
+        self.result.write_text(json.dumps(base_result(status="pass")), encoding="utf-8")  # forged overall status
         res = self.comment("--pr", "12")
         self.assertNotEqual(res.exit_code, 0)
         self.assertIn("invalid result.json", res.output)
-        self.result.write_text(json.dumps(base_result()))
+        self.result.write_text(json.dumps(base_result()), encoding="utf-8")
         with mock.patch.dict(os.environ, {"GITHUB_TOKEN": ""}):
             res = self.runner.invoke(main, ["comment", "--json", str(self.result), "--pr", "1"])
         self.assertIn("GITHUB_TOKEN is not set", res.output)
@@ -103,9 +103,9 @@ class CommentCommandTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(out)}):
             res = self.runner.invoke(main, ["summary", "--json", str(self.result)])
         self.assertEqual(res.exit_code, 0, res.output)
-        self.assertIn(CARD_MARKER, out.read_text())
+        self.assertIn(CARD_MARKER, out.read_text(encoding="utf-8"))
         bad = self.tmp / "bad.json"
-        bad.write_text("{}")
+        bad.write_text("{}", encoding="utf-8")
         res = self.runner.invoke(main, ["summary", "--json", str(bad)])
         self.assertNotEqual(res.exit_code, 0)
 

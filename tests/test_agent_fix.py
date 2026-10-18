@@ -91,11 +91,11 @@ class FixLoopTests(unittest.TestCase):
             self.assertEqual(res.exit_code, 0, res.output)
             self.assertIn("VERIFIED after 1 round", res.output)
             self.assertIn("| finite", res.output)
-            text = (self.repo.root / "numops.py").read_text()
+            text = (self.repo.root / "numops.py").read_text(encoding="utf-8")
             self.assertIn("m = np.max(x)", text)
             self.assertIn("def double(x):", text)  # the rest of the module is untouched
             self.assertIn('pathlib.Path(__file__).with_name("IMPORTED")', text)
-            data = json.loads((self.repo.root / "fix.json").read_text())
+            data = json.loads((self.repo.root / "fix.json").read_text(encoding="utf-8"))
             self.assertEqual(data["status"], "verified")
             res = runner.invoke(main, ["check", "--target", "logsumexp"])
             self.assertEqual(res.exit_code, 0, res.output)
@@ -117,7 +117,7 @@ class ApplyRewriteTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(tmp))
         (tmp / "m.py").write_text('"""doc"""\nimport numpy as np\nimport numguard\n\n\n@numguard.guard(domain="any")\n'
-                                  'def f(x):\n    return np.log(np.sum(np.exp(x)))\n\n\ndef g():\n    pass\n')
+                                  'def f(x):\n    return np.log(np.sum(np.exp(x)))\n\n\ndef g():\n    pass\n', encoding="utf-8")
         info = locate_source("m:f", tmp)
         new = apply_rewrite(info, "import math\nimport numpy as np\n\n\ndef f(x):\n    return math.fsum(x)\n")
         self.assertIn('import numguard\nimport math\n', new)
@@ -162,7 +162,7 @@ class CISplitTests(unittest.TestCase):
                                [("submit_rewrite", {"code": STABLE, "rationale": "max-shift"})]])
         self.assertIn("1 candidate rewrite(s)", res.output)
         self.assertFalse(self.repo.imported, "propose imported repository code")
-        manifest = json.loads((self.out / "cands" / "manifest.json").read_text())
+        manifest = json.loads((self.out / "cands" / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["candidates"][0]["status"], "submitted")
         self.assertEqual(manifest["candidates"][0]["file"], "cand_0.py")
         self.assertIn("finite", t.request_text(0))  # failure table from result.json
@@ -170,36 +170,36 @@ class CISplitTests(unittest.TestCase):
         self.assertEqual(res.exit_code, 0, res.output)
         self.assertIn("logsumexp: verified", res.output)
         self.assertTrue(self.repo.imported)  # verify executes the code (in its own subprocess)
-        doc = validate_result(json.loads((self.out / "final.json").read_text()))
+        doc = validate_result(json.loads((self.out / "final.json").read_text(encoding="utf-8")))
         fix = doc["fixes"][0]
         self.assertEqual((fix["status"], fix["after_failures"], fix["model"]), ("verified", 0, "fake-model"))
         self.assertIn("+    m = np.max(x)", fix["diff"])
-        card = (self.out / "card.md").read_text()
+        card = (self.out / "card.md").read_text(encoding="utf-8")
         self.assertIn("suggested fix (verified): diff", card)
         self.assertEqual(parse_card_data(card)["fixes"][0]["status"], "verified")
         # the source in the PR is untouched: verify only reports
-        self.assertEqual((self.repo.root / "numops.py").read_text(), MODULE)
+        self.assertEqual((self.repo.root / "numops.py").read_text(encoding="utf-8"), MODULE)
 
     def test_wrong_candidate_is_rejected_by_verify(self):
         self.propose([[("submit_rewrite", {"code": WRONG, "rationale": "shift"})]])
         res = self.verify()
         self.assertEqual(res.exit_code, 0, res.output)
-        fix = json.loads((self.out / "final.json").read_text())["fixes"][0]
+        fix = json.loads((self.out / "final.json").read_text(encoding="utf-8"))["fixes"][0]
         self.assertEqual(fix["status"], "rejected")
         self.assertTrue(any("new failure" in r for r in fix["reasons"]))
 
     def test_verify_repeats_the_static_check_and_validates_the_manifest(self):
         self.propose([[("submit_rewrite", {"code": STABLE, "rationale": "ok"})]])
         cands = self.out / "cands"
-        (cands / "cand_0.py").write_text(DENIED)  # tampered after propose
+        (cands / "cand_0.py").write_text(DENIED, encoding="utf-8")  # tampered after propose
         res = self.verify()
         self.assertEqual(res.exit_code, 0, res.output)
-        fix = json.loads((self.out / "final.json").read_text())["fixes"][0]
+        fix = json.loads((self.out / "final.json").read_text(encoding="utf-8"))["fixes"][0]
         self.assertEqual(fix["status"], "refused")
         self.assertFalse((self.repo.root / "PWNED").exists())
-        m = json.loads((cands / "manifest.json").read_text())
+        m = json.loads((cands / "manifest.json").read_text(encoding="utf-8"))
         m["candidates"][0]["file"] = "../numops.py"
-        (cands / "manifest.json").write_text(json.dumps(m))
+        (cands / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
         with self.assertRaises(ManifestError):
             load_manifest(cands)
         self.assertNotEqual(self.verify().exit_code, 0)
@@ -214,22 +214,22 @@ class CISplitTests(unittest.TestCase):
         self.assertIn("cast the result back", t.request_text(2))
         res = self.verify()
         self.assertEqual(res.exit_code, 0, res.output)
-        fixes = json.loads((self.out / "final.json").read_text())["fixes"]
+        fixes = json.loads((self.out / "final.json").read_text(encoding="utf-8"))["fixes"]
         self.assertEqual(len(fixes), 1)  # one entry per target, not per variant
         self.assertEqual((fixes[0]["status"], fixes[0]["rounds"], fixes[0]["rationale"]), ("verified", 3, "second"))
-        self.assertIn("3 attempts", (self.out / "card.md").read_text())
+        self.assertIn("3 attempts", (self.out / "card.md").read_text(encoding="utf-8"))
 
     def test_a_failing_variant_does_not_lose_the_others(self):
         # the second session gets no scripted answer (the model call fails): the first still counts
         _, res = self.propose([[("submit_rewrite", {"code": STABLE, "rationale": "ok"})]], variants=2)
-        m = json.loads((self.out / "cands" / "manifest.json").read_text())
+        m = json.loads((self.out / "cands" / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual([c["status"] for c in m["candidates"]], ["submitted", "error"])
         res = self.verify()
-        self.assertEqual(json.loads((self.out / "final.json").read_text())["fixes"][0]["status"], "verified")
+        self.assertEqual(json.loads((self.out / "final.json").read_text(encoding="utf-8"))["fixes"][0]["status"], "verified")
 
     def test_propose_is_a_no_op_when_the_agent_is_disabled(self):
         cfg = self.repo.root / "numguard.toml"
-        cfg.write_text(cfg.read_text().replace("enabled = true", "enabled = false"))
+        cfg.write_text(cfg.read_text(encoding="utf-8").replace("enabled = true", "enabled = false"), encoding="utf-8")
         t, res = self.propose([])
         self.assertIn("nothing to do", res.output)
         self.assertEqual(t.requests, [])

@@ -43,7 +43,7 @@ class CliTestCase(unittest.TestCase):
             @numguard.guard(domain="positive", dtypes=["float64"], reference=np.log)
             def guarded_log(x):
                 return np.log(x)
-        """))
+        """), encoding="utf-8")
         sys.path.insert(0, str(self.tmp))
         self.runner = CliRunner()
 
@@ -129,7 +129,7 @@ class EvalCommandTests(CliTestCase):
                                         "--task", "sigmoid", "--json-out", str(out)])
         self.assertEqual(res.exit_code, 1, res.output)
         self.assertIn("fp_signals", res.output)
-        data = json.loads(out.read_text())
+        data = json.loads(out.read_text(encoding="utf-8"))
         self.assertEqual(data["tasks"][0]["status"], "fail")
         self.assertIn("report", data["tasks"][0])
 
@@ -152,7 +152,7 @@ class ModuleEntryPointTests(unittest.TestCase):
     def test_python_m_numguard_help(self):
         env = dict(os.environ, PYTHONPATH=str(h.SRC))
         proc = subprocess.run([sys.executable, "-m", "numguard", "--help"],
-                              capture_output=True, text=True, env=env, check=False)
+                              capture_output=True, text=True, env=env, check=False, encoding="utf-8", errors="replace")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("eval", proc.stdout)
         self.assertIn("check", proc.stdout)

@@ -157,10 +157,10 @@ class RenderTests(unittest.TestCase):
     def test_python_spec_file_runs(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
-        (tmp / "mymod.py").write_text("import numpy as np\n\ndef lse(x):\n    return np.log(np.sum(np.exp(x)))\n")
+        (tmp / "mymod.py").write_text("import numpy as np\n\ndef lse(x):\n    return np.log(np.sum(np.exp(x)))\n", encoding="utf-8")
         text = render_python_spec(self.DOC, "mymod.py:lse", ["x"], header="Suggested by a test.")
         compile(text, "spec.py", "exec")
-        (tmp / "spec_lse.py").write_text(text)
+        (tmp / "spec_lse.py").write_text(text, encoding="utf-8")
         cwd = os.getcwd()
         os.chdir(tmp)
         try:
@@ -204,7 +204,7 @@ class ConfigTests(unittest.TestCase):
     def test_invalid_toml(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
-        (tmp / "numguard.toml").write_text("[[target]\n")
+        (tmp / "numguard.toml").write_text("[[target]\n", encoding="utf-8")
         with self.assertRaisesRegex(ConfigError, "invalid TOML"):
             load_config(tmp / "numguard.toml")
 
@@ -239,7 +239,7 @@ class CheckConfigCommandTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
-        (self.tmp / "numguard.toml").write_text(BUGGY_CONFIG.format(corpus=h.CORPUS.as_posix()))
+        (self.tmp / "numguard.toml").write_text(BUGGY_CONFIG.format(corpus=h.CORPUS.as_posix()), encoding="utf-8")
         self.runner = CliRunner()
 
     def invoke(self, *args):
@@ -254,7 +254,7 @@ class CheckConfigCommandTests(unittest.TestCase):
         self.assertIn("lse_buggy FAILED", res.output)
         self.assertIn("missing ERROR", res.output)
         self.assertIn("1/3 targets passed; overall: ERROR", res.output)
-        doc = validate_result(json.loads(out.read_text()))
+        doc = validate_result(json.loads(out.read_text(encoding="utf-8")))
         self.assertEqual(doc["status"], "error")
         self.assertEqual(doc["pr_number"], 7)
         self.assertEqual(doc["head"], "a" * 40)
@@ -264,7 +264,7 @@ class CheckConfigCommandTests(unittest.TestCase):
         self.assertIn("finite", by["lse_buggy"]["failed_checks"])
         self.assertEqual(by["lse_reference"]["status"], "pass")
         self.assertIn("cannot import module", by["missing"]["error"])
-        text = card.read_text()
+        text = card.read_text(encoding="utf-8")
         self.assertIn("<!-- numguard:card -->", text)
         self.assertIn("lse\\_buggy", text)
         self.assertTrue(text.rstrip().endswith("-->"))
@@ -311,7 +311,7 @@ class CheckConfigCommandTests(unittest.TestCase):
     def test_pytest_section(self):
         (self.tmp / "tests").mkdir()
         (self.tmp / "tests" / "test_ok.py").write_text("def test_a():\n    assert True\n\n"
-                                                        "def test_b():\n    assert 1 == 2\n")
+                                                        "def test_b():\n    assert 1 == 2\n", encoding="utf-8")
         (self.tmp / "numguard.toml").write_text(textwrap.dedent(f"""
             [[target]]
             function = "{h.CORPUS.as_posix()}/logsumexp/reference.py:logsumexp"
@@ -319,11 +319,11 @@ class CheckConfigCommandTests(unittest.TestCase):
 
             [pytest]
             args = ["tests"]
-        """))
+        """), encoding="utf-8")
         out = self.tmp / "r.json"
         res = self.invoke("--json-out", str(out))
         self.assertEqual(res.exit_code, 1, res.output)
-        doc = validate_result(json.loads(out.read_text()))
+        doc = validate_result(json.loads(out.read_text(encoding="utf-8")))
         self.assertEqual(doc["pytest"]["status"], "fail")
         self.assertEqual((doc["pytest"]["passed"], doc["pytest"]["failed"]), (1, 1))
         self.assertEqual(doc["status"], "fail")
@@ -339,15 +339,15 @@ class CheckConfigCommandTests(unittest.TestCase):
         res = self.runner.invoke(main, ["check", target, "--ref", "scipy.special:logsumexp",
                                         "--json-out", str(out), "--card-out", str(card)])
         self.assertEqual(res.exit_code, 1, res.output)
-        doc = validate_result(json.loads(out.read_text()))
+        doc = validate_result(json.loads(out.read_text(encoding="utf-8")))
         self.assertLessEqual(len(doc["targets"][0]["name"]), 80)
         self.assertEqual(doc["status"], "fail")
-        self.assertIn("1 of 1 target fails", card.read_text())
+        self.assertIn("1 of 1 target fails", card.read_text(encoding="utf-8"))
 
     def test_root_option_resolves_relative_paths(self):
         cfg = self.tmp / "elsewhere.toml"
         cfg.write_text('[[target]]\nfunction = "corpus/logsumexp/reference.py:logsumexp"\n'
-                       'reference_function = "scipy.special:logsumexp"\n')
+                       'reference_function = "scipy.special:logsumexp"\n', encoding="utf-8")
         res = self.runner.invoke(main, ["check", "--config", str(cfg)])
         self.assertEqual(res.exit_code, 1, res.output)  # corpus/ is not next to the config
         res = self.runner.invoke(main, ["check", "--config", str(cfg), "--root", str(h.ROOT)])

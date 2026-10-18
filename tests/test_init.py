@@ -36,24 +36,24 @@ class InitTests(unittest.TestCase):
             "numguard.toml": "examples/numguard.toml",
         }
         for written, example in pairs.items():
-            self.assertEqual((self.tmp / written).read_text(), (h.ROOT / example).read_text(),
+            self.assertEqual((self.tmp / written).read_text(encoding="utf-8"), (h.ROOT / example).read_text(encoding="utf-8"),
                              f"{example} is out of date: regenerate it with `numguard init --agent`")
         self.assertEqual(sorted(p.name for p in (h.ROOT / "examples" / "workflows").glob("*.yml")),
                          sorted(Path(k).name for k in pairs if k.endswith(".yml")))
 
     def test_refuses_to_overwrite_and_writes_nothing(self):
-        (self.tmp / "numguard.toml").write_text("# mine\n")
+        (self.tmp / "numguard.toml").write_text("# mine\n", encoding="utf-8")
         with self.assertRaisesRegex(InitError, "refusing to overwrite existing file"):
             init_repo(self.tmp)
         self.assertFalse((self.tmp / ".github").exists())
-        self.assertEqual((self.tmp / "numguard.toml").read_text(), "# mine\n")
+        self.assertEqual((self.tmp / "numguard.toml").read_text(encoding="utf-8"), "# mine\n")
         res = init_repo(self.tmp, force=True)
         self.assertIn("numguard.toml", res.written)
         self.assertNotIn(".github/workflows/numguard-agent.yml", res.written)
 
     def test_options_and_generated_config(self):
         res = init_repo(self.tmp, ref="v9.9.9", install_command="pip install .", targets=["pkg.ops:lse"])
-        wf = (self.tmp / ".github/workflows/numguard.yml").read_text()
+        wf = (self.tmp / ".github/workflows/numguard.yml").read_text(encoding="utf-8")
         self.assertIn("check.yml@v9.9.9", wf)
         self.assertIn("install-command: 'pip install .'", wf)
         cfg = load_config(self.tmp / "numguard.toml")
@@ -68,13 +68,13 @@ class InitTests(unittest.TestCase):
     def test_agent_config_is_enabled_and_default_ref_is_this_release(self):
         init_repo(self.tmp, agent=True)
         self.assertTrue(load_config(self.tmp / "numguard.toml").agent.enabled)
-        self.assertIn(f"@v{__version__}", (self.tmp / ".github/workflows/numguard-agent.yml").read_text())
+        self.assertIn(f"@v{__version__}", (self.tmp / ".github/workflows/numguard-agent.yml").read_text(encoding="utf-8"))
 
     @unittest.skipIf(yaml is None, "PyYAML not installed")
     def test_generated_workflows_parse(self):
         init_repo(self.tmp, agent=True, install_command="pip install 'a[b]'")
         for f in (self.tmp / ".github" / "workflows").glob("*.yml"):
-            data = yaml.safe_load(f.read_text())
+            data = yaml.safe_load(f.read_text(encoding="utf-8"))
             self.assertIn("jobs", data)
 
     def test_cli(self):

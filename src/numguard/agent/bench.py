@@ -114,7 +114,7 @@ def _grade(task: str, cand_dir: Path, corpus: str | None, timeout: float) -> Ben
             cmd += ["--corpus-dir", corpus]
         try:
             subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=child_environment(),  # noqa: S603
-                           check=False, start_new_session=True)
+                           check=False, start_new_session=True, encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired:
             return BenchTask(task, "error", reason=f"grading timed out after {timeout:g}s")
         if not out.is_file():

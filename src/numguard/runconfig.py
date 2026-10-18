@@ -112,7 +112,7 @@ def run_pytest(conf: PytestConfig, root: Path, python: str | None = None) -> Pyt
                "-p", "no:cacheprovider"]
         try:
             proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=conf.timeout,
-                                  check=False)
+                                  check=False, encoding="utf-8", errors="replace")
         except subprocess.TimeoutExpired:
             return PytestOutcome("error", message=f"pytest timed out after {conf.timeout}s",
                                  duration_s=time.perf_counter() - t0)
