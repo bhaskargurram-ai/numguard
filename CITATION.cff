@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use numguard in your work, please cite it using these metadata."
+type: software
+title: "numguard: Numerical edge-case testing for array code"
+abstract: "Numerical edge-case testing for array code: catch the NaNs, overflows and precision bugs that happy-path tests miss, in pytest and CI, with an optional agent whose fixes are verified by execution."
+authors:
+  - family-names: Gurram
+    given-names: Bhaskar
+version: "1.0.1"
+date-released: "2026-10-14"
+license: MIT
+repository-code: "https://github.com/bhaskargurram-ai/numguard"
+url: "https://pypi.org/project/numguard-ci/"
+keywords:
+  - "numerical testing"
+  - "floating point"
+  - "edge cases"
+  - "scientific computing"
+  - "pytest"

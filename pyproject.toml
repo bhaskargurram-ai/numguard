@@ -19,7 +19,7 @@ dependencies = [
 keywords = ["numpy", "testing", "numerical", "floating-point", "edge cases", "pytest", "ulp", "hypothesis",
             "github-actions", "llm"]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Framework :: Pytest",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",

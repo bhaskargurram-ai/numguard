@@ -43,7 +43,7 @@ print(report.summary())
 </p>
 
 > [!NOTE]
-> **Status: stable (1.x).** The edge-case catalogue, checks, pytest plugin, config file, bug corpus and GitHub workflows are deterministic and need no LLM. The agent commands (`suggest`, `fix`, `bench`) are **experimental, opt-in and bring-your-own-key**: whatever a model writes counts only after numguard has executed it and re-run the checks. NumPy is the tested backend; PyTorch, JAX and CuPy are supported when installed.
+> **Status: beta.** Releases are numbered 1.x, but there are no confirmed outside users yet, so details may still change. The edge-case catalogue, checks, pytest plugin, config file, bug corpus and GitHub workflows are deterministic and need no LLM. The agent commands (`suggest`, `fix`, `bench`) are **experimental, opt-in and bring-your-own-key**: whatever a model writes counts only after numguard has executed it and re-run the checks. NumPy is the tested backend; PyTorch, JAX and CuPy are supported when installed.
 
 ## Contents
 
@@ -65,6 +65,7 @@ print(report.summary())
 - [FAQ](#faq)
 - [Limitations](#limitations)
 - [Roadmap](#roadmap)
+- [Verification toolkit](#part-of-a-verification-toolkit) · [How to cite](#how-to-cite)
 - [Contributing](#contributing) · [License](#license)
 
 ## Why edge cases?
@@ -849,6 +850,18 @@ So that no single job both runs PR code and holds a secret or a write token. A s
 - Native support for the [Python array API standard](https://data-apis.org/array-api/) in the backend adapter
 - Published `bench` results, run on GitHub with the numbers and costs alongside
 
+## Part of a verification toolkit
+
+numguard is one of three tools for checking whether scientific and ML computations are actually correct, including code written with AI assistance:
+
+- **numguard** (`pip install numguard-ci`, this package): Is the arithmetic right on edge cases: NaN, ±inf, overflow, subnormals, cancellation, low precision?
+- **[stataudit](https://github.com/bhaskargurram-ai/stataudit)** (`pip install stataudit`): Does a statistical conclusion survive its own data, given test assumptions, alternatives and multiple comparisons?
+- **[proofcheck](https://github.com/bhaskargurram-ai/proofcheck)** (`pip install proofcheck-ai`): Does a code change do what it claims: fail-to-pass tests, reproducer replay, claim-to-evidence mapping?
+
+## How to cite
+
+If you use numguard in research, please cite it. The repository's [`CITATION.cff`](https://github.com/bhaskargurram-ai/numguard/blob/main/CITATION.cff) has the metadata; GitHub's "Cite this repository" button turns it into APA or BibTeX.
+
 ## Contributing
 
 Contributions are welcome, especially new corpus tasks and edge-case kinds. See [CONTRIBUTING.md](https://github.com/bhaskargurram-ai/numguard/blob/main/CONTRIBUTING.md). In short:
@@ -859,7 +872,7 @@ python -m pytest            # or, without pytest: python -m unittest discover -s
 numguard eval --baseline reference && numguard eval --baseline buggy
 ```
 
-[docs/TESTING.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/TESTING.md) describes every test level. Please report security issues privately through the repository's security advisory form rather than in a public issue.
+[docs/TESTING.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/TESTING.md) describes every test level. Please report security issues privately, as described in [SECURITY.md](https://github.com/bhaskargurram-ai/numguard/blob/main/SECURITY.md), rather than in a public issue. Everyone taking part is expected to follow the [code of conduct](https://github.com/bhaskargurram-ai/numguard/blob/main/CODE_OF_CONDUCT.md).
 
 ## License
 
