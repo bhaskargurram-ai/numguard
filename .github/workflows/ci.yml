@@ -60,8 +60,11 @@ jobs:
           python -m pip install -e ".[dev,bfloat16]" "jax[cpu]"
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -c "import jax, torch; print('jax', jax.__version__, 'torch', torch.__version__)"
-      - name: Backend and gradient tests
-        run: python -m pytest -q tests/test_backends.py tests/test_isolation_grad.py --junitxml=backend-junit.xml
+      # tests/test_backends.py swaps fake torch/jax modules in and out of
+      # sys.modules, which a real PyTorch installation cannot survive; it runs
+      # in the test job, where neither library is installed.
+      - name: Gradient and isolation tests on real JAX and PyTorch
+        run: python -m pytest -q -rs tests/test_isolation_grad.py --junitxml=backend-junit.xml
       - name: Report failures as annotations
         if: failure()
         run: |
