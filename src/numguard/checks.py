@@ -32,6 +32,14 @@ the reference, if any) once per case and then evaluates:
     Optional: an elementwise function is non-decreasing / non-increasing.
 ``prop:<name>``
     User-declared metamorphic properties (see :mod:`numguard.properties`).
+``isolation``
+    ``elementwise=True``: each element's result is the same alone, in the
+    full array, and next to every other case's inputs.
+``grad``, ``grad:primal``, ``grad:forward``
+    ``grad=True`` (JAX, PyTorch) or ``grad=callable``: the gradient of
+    ``sum(f)`` agrees with a float64 reference, a forward-mode ``jvp``
+    returns ``f(x)`` as its primal, and forward and reverse mode agree (see
+    :mod:`numguard.gradcheck`).
 """
 
 from __future__ import annotations
@@ -670,6 +678,248 @@ def _check_properties(ctx: _Ctx, fn: Callable[..., Any], case: Case, run: Run) -
                 "" if c.ok else f"{prop.description}: {c.message}", run=r, cmp=c)
 
 
+def _isolation_pool(spec: "Spec", done: Sequence[tuple[Case, Run]]) -> dict[str, list[tuple[str, tuple[np.ndarray, ...]]]]:
+    """Per dtype: the inputs of every case that ran, to place next to other cases."""
+    pool: dict[str, list[tuple[str, tuple[np.ndarray, ...]]]] = {}
+    for case, run in done:
+        if not run.ok or not _isolatable(case) or case.size > spec.n * 64:
+            continue
+        pool.setdefault(case.dtype, []).append((case.name, case.args))
+    return pool
+
+
+def _isolatable(case: Case) -> bool:
+    if not case.args or any(a.ndim != 1 for a in case.args):
+        return False
+    return len({a.shape[0] for a in case.args}) == 1 and case.args[0].shape[0] >= 1
+
+
+def _check_isolation(ctx: _Ctx, fn: Callable[..., Any], case: Case, run: Run,
+                     pool: Mapping[str, list[tuple[str, tuple[np.ndarray, ...]]]]) -> None:
+    """An elementwise result must not depend on the other elements of the array.
+
+    Each element is recomputed (a) alone, as a length-1 array, and (b) inside a
+    larger array that also holds the inputs of every other case of the same
+    dtype (NaN, infinities, huge, tiny and subnormal values included). Both
+    must agree with the original call. A function that shares work across the
+    batch, such as one convergence loop for every element (``jax-ml/jax#41440``),
+    or that normalizes by a batch statistic, fails here.
+    """
+    spec = ctx.spec
+    if not run.ok or not _isolatable(case) or case.size > spec.n * 64:
+        return
+    outs = run.outputs or []
+    n = case.args[0].shape[0]
+    if not outs or any(o.shape != (n,) for o in outs):
+        ctx.add("isolation", case, FAIL,
+                "elementwise=True but the output shape differs from the input shape", run=run)
+        return
+    neighbours = [args for name, args in pool.get(case.dtype, []) if name != case.name]
+    if spec.nan == "raise":
+        neighbours = [a for a in neighbours if not any(np.isnan(x).any() for x in a if x.dtype.kind == "f")]
+    problems: list[str] = []
+    worst: Comparison | None = None
+    if neighbours:
+        others = [np.concatenate([nb[i] for nb in neighbours]) for i in range(len(case.args))]
+        m = others[0].shape[0]
+        for label, before in (("after", 0), ("before", m)):
+            mixed = tuple(np.concatenate([a, o]) if before == 0 else np.concatenate([o, a])
+                          for a, o in zip(case.args, others))
+            r = call(fn, mixed, spec.kwargs)
+            if not r.ok:
+                problems.append(f"raised {r.error_text()} when other cases' inputs were placed {label} it")
+                continue
+            got = [o[before:before + n] if o.ndim == 1 and o.shape[0] == n + m else o for o in r.outputs or []]
+            c = _compare_outputs(got, outs, case, spec, 4.0, "alone")
+            if not c.ok:
+                problems.append(f"with other cases' inputs placed {label} it: {c.message}")
+                worst = worst or c
+    k_max = min(n, 16)
+    singles = []
+    for k in range(k_max):
+        r = call(fn, tuple(a[k:k + 1] for a in case.args), spec.kwargs)
+        if not r.ok:
+            problems.append(f"element {k} computed alone raised {r.error_text()}")
+            break
+        singles.append(r.outputs or [])
+    if len(singles) == k_max and singles:
+        try:
+            got = [np.concatenate([s[j] for s in singles]) for j in range(len(outs))]
+        except ValueError:
+            got = None
+        if got is not None:
+            c = _compare_outputs(got, [o[:k_max] for o in outs], case, spec, 4.0, "in the full array")
+            if not c.ok:
+                problems.append(f"computed one element at a time: {c.message}")
+                worst = worst or c
+    if problems:
+        ctx.add("isolation", case, FAIL, "result depends on the other elements: " + "; ".join(problems),
+                run=run, cmp=worst)
+    else:
+        ctx.add("isolation", case, PASS, run=run)
+
+
+def _grad_dtnames(spec: "Spec", case: Case) -> list[str]:
+    return [dtype_name(s.dtype) if s.dtype is not None else case.dtype for s in spec.inputs] \
+        or [case.dtype] * len(case.args)
+
+
+def _check_grad(ctx: _Ctx, fn: Callable[..., Any], grad_fn: Callable[..., Any] | None,
+                case: Case, run: Run) -> None:
+    """Gradients of ``sum(f)`` against a float64 reference (see :mod:`numguard.gradcheck`)."""
+    from .gradcheck import autodiff, finite_difference_grad, grad_tolerance, unwrap  # noqa: PLC0415
+
+    spec = ctx.spec
+    if not run.ok or not case.finite_inputs:
+        return
+    outs = run.outputs or []
+    if len(outs) != 1 or outs[0].dtype.kind != "f":
+        return
+    if not np.all(np.isfinite(outs[0])) and not spec.elementwise:
+        return
+    idx = [i for i, a in enumerate(case.args) if a.dtype.kind == "f"]
+    if not idx:
+        return
+    dtnames = _grad_dtnames(spec, case)
+    ad = None
+    if spec.grad is True:
+        backend = fn.backend if isinstance(fn, BackendCall) else None
+        if backend is None:
+            return
+        try:
+            ad = autodiff(backend, unwrap(fn), case.args, dtnames, idx, dict(spec.kwargs))
+        except Exception as exc:  # noqa: BLE001 - reported as a failure
+            ctx.add("grad", case, FAIL, f"automatic differentiation raised {type(exc).__name__}: "
+                    f"{str(exc).strip().splitlines()[0] if str(exc).strip() else ''}".rstrip(": "), run=run)
+            return
+        grads = ad.grads
+    else:
+        assert grad_fn is not None
+        if isinstance(grad_fn, BackendCall):
+            grad_fn.set_case(dtnames)
+        r = call(grad_fn, case.args, spec.kwargs)
+        if not r.ok:
+            ctx.add("grad", case, FAIL, f"gradient function raised {r.error_text()}", run=r)
+            return
+        grads = list(r.outputs or [])
+        if len(grads) != len(idx):
+            ctx.add("grad", case, FAIL, f"gradient function returned {len(grads)} array(s) for "
+                    f"{len(idx)} floating argument(s)", run=r)
+            return
+
+    # ---- primal and forward-mode consistency ---------------------------------
+    if ad is not None and ad.jvp_primal is not None:
+        c = _compare_outputs([np.asarray(ad.jvp_primal)], outs, case, spec, 1.0, "f(x)")
+        ctx.add("grad:primal", case, PASS if c.ok else FAIL,
+                "" if c.ok else f"the primal value returned by jvp differs from f(x): {c.message}",
+                run=run, cmp=c)
+        if spec.elementwise and len(idx) == 1 and ad.jvp_tangent is not None and grads[0] is not None:
+            tol = grad_tolerance(dtnames[idx[0]], spec.grad_rtol)
+            c = compare(np.asarray(ad.jvp_tangent), np.asarray(grads[0], dtype=np.float64),
+                        rtol=tol, atol=0.0, label="reverse mode")
+            ctx.add("grad:forward", case, PASS if c.ok else FAIL,
+                    "" if c.ok else f"forward-mode derivative differs from reverse mode: {c.message}",
+                    run=run, cmp=c)
+
+    # ---- the float64 reference gradient -------------------------------------
+    args64 = [a.astype(np.float64) if a.dtype.kind == "f" else a for a in case.args]
+    expected: list[np.ndarray]
+    if spec.grad_reference is not None:
+        r = call(spec.grad_reference, args64, spec.ref_kwargs, check_mutation=False)
+        if not r.ok:
+            ctx.add("grad", case, FAIL, f"grad_reference raised {r.error_text()}", run=run)
+            return
+        expected = [np.asarray(e, dtype=np.float64) for e in (r.outputs or [])]
+        uncert = [np.zeros_like(e) for e in expected]
+        if len(expected) != len(idx):
+            ctx.add("grad", case, FAIL, f"grad_reference returned {len(expected)} array(s) for "
+                    f"{len(idx)} floating argument(s)", run=run)
+            return
+    else:
+        if spec.reference is not None:
+            valfn, vkw = spec.reference, dict(spec.ref_kwargs)
+        else:
+            valfn, vkw = fn, dict(spec.kwargs)
+            if isinstance(fn, BackendCall):
+                fn.set_case(["float64" if a.dtype.kind == "f" else dtnames[i]
+                             for i, a in enumerate(case.args)])
+                probe = call(fn, args64, vkw, check_mutation=False)
+                fn.set_case(dtnames)
+                if not probe.ok or any(np.asarray(o).dtype != np.float64 for o in probe.outputs or []):
+                    ctx.add("grad", case, SKIP, "no float64 evaluation for finite differences: give "
+                            "reference= or grad_reference= (JAX needs JAX_ENABLE_X64=1 for float64)")
+                    return
+        expected, uncert = [], []
+        try:
+            for i in idx:
+                spec_i = spec.inputs[i] if i < len(spec.inputs) else None
+                est, unc = finite_difference_grad(valfn, args64, i, spec_i, vkw,
+                                                  elementwise=spec.elementwise)
+                expected.append(est)
+                uncert.append(unc)
+        except Exception as exc:  # noqa: BLE001
+            ctx.add("grad", case, SKIP, f"finite differences failed: {type(exc).__name__}: {exc}")
+            return
+        if isinstance(fn, BackendCall):
+            fn.set_case(dtnames)
+
+    # ---- compare --------------------------------------------------------------
+    problems: list[str] = []
+    worst: Comparison | None = None
+    checked = 0
+    for pos, i in enumerate(idx):
+        g = grads[pos]
+        e = expected[pos]
+        if g is None:
+            if np.any(np.isfinite(e) & (e != 0)):
+                problems.append(f"argument {spec.arg_names[i] if i < len(spec.arg_names) else i}: "
+                                "no gradient (unused), but the function depends on it")
+            continue
+        g = np.asarray(g)
+        if g.shape != case.args[i].shape:
+            problems.append(f"gradient of argument {i} has shape {g.shape}, input {case.args[i].shape}")
+            continue
+        mask = np.isfinite(e)
+        if spec.elementwise and outs[0].shape == g.shape:
+            mask &= np.isfinite(outs[0])
+        if not mask.any():
+            continue
+        checked += int(mask.sum())
+        tol = grad_tolerance(dtnames[i], spec.grad_rtol)
+        gm = g[mask].astype(np.float64)
+        em = e[mask]
+        um = np.asarray(uncert[pos])[mask] if np.shape(uncert[pos]) == e.shape else np.zeros_like(em)
+        scale = float(np.max(np.abs(em)))
+        with np.errstate(all="ignore"):
+            # a reference beyond the gradient dtype's range is expected to be +-inf there
+            e_round = em.astype(g.dtype).astype(np.float64) if g.dtype.kind == "f" else em
+            limit = tol * np.abs(em) + tol * 1e-3 * max(1.0, scale) + um
+            diff = np.abs(gm - em)
+            bad = np.where(np.isinf(e_round), gm != e_round, ~np.isfinite(gm) | (diff > limit))
+        if bad.any():
+            with np.errstate(all="ignore"):
+                rel = np.where(bad, np.where(np.isfinite(diff), diff / np.maximum(np.abs(em), 1e-300),
+                                             np.inf), -1.0)
+            j = int(np.argmax(rel))
+            k = int(np.flatnonzero(mask.ravel())[j])
+            xval = case.args[i].ravel()[k]
+            name = spec.arg_names[i] if i < len(spec.arg_names) else f"argument {i}"
+            problems.append(f"d/d{name} at {name}={_fmt_val(xval)}: got {_fmt_val(gm[j])}, "
+                            f"expected {_fmt_val(em[j])} ({int(bad.sum())}/{gm.size} off)")
+            c = Comparison(False, problems[-1], float(np.nanmax(np.where(np.isfinite(diff), diff, np.nan)))
+                           if np.isfinite(diff).any() else float("inf"), float(np.max(rel)), None,
+                           int(bad.sum()), problems[-1])
+            worst = worst or c
+    if not checked and not problems:
+        return
+    source = ("grad_reference" if spec.grad_reference is not None else
+              "finite differences of the reference" if spec.reference is not None else
+              "finite differences in float64")
+    ctx.add("grad", case, FAIL if problems else PASS,
+            f"gradient differs from {source}: " + "; ".join(problems) if problems else "",
+            run=run, cmp=worst)
+
+
 def run_checks(fn: Callable[..., Any], spec: "Spec", cases: Sequence[Case],
                name: str | None = None) -> Report:
     """Run every applicable check of ``spec`` on ``cases`` and build a :class:`Report`."""
@@ -683,19 +933,32 @@ def run_checks(fn: Callable[..., Any], spec: "Spec", cases: Sequence[Case],
         if isinstance(spec.reference, HighPrecReference):
             report.reference += f" [{spec.reference.precision}]"
     ctx = _Ctx(spec, report)
+    grad_dtypes = report.dtypes if spec.grad not in (None, False) else []
     fn = wrap(fn, spec.backend, report.dtypes)
+    grad_fn = None
+    if callable(spec.grad):
+        grad_fn = wrap(spec.grad, spec.backend, grad_dtypes)
     if spec.backend != "numpy":
         report.backend = spec.backend
+    done: list[tuple[Case, Run]] = []
     for case in cases:
         if isinstance(fn, BackendCall):
-            fn.set_case([dtype_name(s.dtype) if s.dtype is not None else case.dtype
-                         for s in spec.inputs] or [case.dtype] * len(case.args))
+            fn.set_case(_grad_dtnames(spec, case))
         run = _check_case(ctx, fn, case)
+        done.append((case, run))
         if spec.batched and case.regular and case.size >= 1:
             _check_batch(ctx, fn, case, run)
         if spec.monotonic and case.finite_inputs:
             _check_monotonic(ctx, fn, case)
         if spec.properties:
             _check_properties(ctx, fn, case, run)
+        if spec.grad not in (None, False):
+            _check_grad(ctx, fn, grad_fn, case, run)
+    if spec.elementwise:
+        pool = _isolation_pool(spec, done)
+        for case, run in done:
+            if isinstance(fn, BackendCall):
+                fn.set_case(_grad_dtnames(spec, case))
+            _check_isolation(ctx, fn, case, run, pool)
     report.duration_s = time.perf_counter() - t0
     return report

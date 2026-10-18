@@ -40,6 +40,42 @@ jobs:
       - name: CLI smoke test
         run: python -m numguard --help
 
+  # The backend adapters and gradient checks against the real libraries
+  # (CPU builds of JAX and PyTorch), not only the fakes in tests/fake_backends.py.
+  backends:
+    runs-on: ubuntu-latest
+    env:
+      JAX_ENABLE_X64: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install numguard with JAX and PyTorch (CPU)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,bfloat16]" "jax[cpu]"
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -c "import jax, torch; print('jax', jax.__version__, 'torch', torch.__version__)"
+      - name: Backend and gradient tests
+        run: python -m pytest -q tests/test_backends.py tests/test_isolation_grad.py --junitxml=backend-junit.xml
+      - name: Report failures as annotations
+        if: failure()
+        run: |
+          python - <<'EOF'
+          import xml.etree.ElementTree as ET
+          for case in ET.parse("backend-junit.xml").iter("testcase"):
+              for tag in ("failure", "error"):
+                  el = case.find(tag)
+                  if el is not None:
+                      text = ((el.get("message") or "") + "\n" + (el.text or "")[-1500:]).strip()
+                      text = text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+                      print(f"::error title={case.get('name')}::{text}")
+          EOF
+
   # Build the distributions and use them the way a user would: install the
   # wheel into a fresh virtualenv (outside the checkout) and run the CLI,
   # `numguard init`, a config-driven check and the eval harness against it.

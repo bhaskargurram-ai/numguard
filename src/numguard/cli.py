@@ -71,6 +71,11 @@ def main() -> None:
               help="Expected NaN behaviour (default: propagate).")
 @click.option("--batched", is_flag=True, default=None,
               help="Check that batching along axis 0 does not change results.")
+@click.option("--elementwise", is_flag=True, default=None,
+              help="Each output element depends only on the same input element: check that "
+                   "results do not change with the other elements.")
+@click.option("--grad", is_flag=True, default=None,
+              help="Check gradients from automatic differentiation (needs --backend jax or torch).")
 @click.option("--monotonic", type=click.Choice(["increasing", "decreasing"]), default=None)
 @click.option("--fp-signals", type=click.Choice(["ignore", "fail"]), default=None,
               help="Fail on overflow/invalid/divide-by-zero signals for finite inputs.")
@@ -98,7 +103,8 @@ def main() -> None:
 def check_cmd(target: str | None, config_path: Path | None, target_names: tuple[str, ...],
               root_dir: Path | None, reference: str | None, dtypes: tuple[str, ...],
               properties: tuple[str, ...], domain: str | None, nan: str | None,
-              batched: bool | None, monotonic: str | None, fp_signals: str | None,
+              batched: bool | None, elementwise: bool | None, grad: bool | None,
+              monotonic: str | None, fp_signals: str | None,
               rtol: float | None, atol: float | None, large_n: int | None, seed: int | None,
               exclude: tuple[str, ...], allow_nonfinite: tuple[str, ...], backend: str | None,
               as_json: bool, json_out: Path | None, card_out: Path | None, no_pytest: bool,
@@ -130,7 +136,8 @@ def check_cmd(target: str | None, config_path: Path | None, target_names: tuple[
     fn = resolve_callable(target)
     ref = resolve_callable(reference) if reference else None
     options: dict[str, Any] = {
-        "nan": nan, "batched": batched, "monotonic": monotonic, "fp_signals": fp_signals,
+        "nan": nan, "batched": batched, "elementwise": elementwise, "grad": grad,
+        "monotonic": monotonic, "fp_signals": fp_signals,
         "large_n": large_n, "seed": seed, "backend": backend,
     }
     if exclude:

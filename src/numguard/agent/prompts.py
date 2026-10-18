@@ -80,6 +80,7 @@ SPEC_SCHEMA: dict[str, Any] = {
         "monotonic": {"type": "string", "enum": ["increasing", "decreasing"]},
         "monotonic_arg": {"type": "integer"},
         "batched": {"type": "boolean"},
+        "elementwise": {"type": "boolean"},
         "batch_axis": {"type": "integer"},
         "fp_signals": {"type": "string", "enum": ["ignore", "fail"]},
         "out_dtype": {"anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},

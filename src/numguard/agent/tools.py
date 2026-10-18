@@ -137,6 +137,7 @@ def catalogue_text() -> str:
               "- ignore: entries 'check:case-pattern' that downgrade matching results to skip",
               "- bounds: [lo, hi] for every output value; monotonic: increasing | decreasing (elementwise functions)",
               "- batched: true if f(stack(xs)) == stack(f(x)) along axis 0 (row-wise functions)",
+              "- elementwise: true if each output element depends only on the same input element",
               "- fp_signals: ignore | fail (fail on overflow/invalid/divide-by-zero for finite inputs)",
               "- rtol / atol: number or {dtype: number}; defaults 1e-2 (float16), 1e-5 (float32), 1e-12 (float64)",
               "- out_dtype: preserve (default) | none | dtype | list per output",

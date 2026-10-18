@@ -224,11 +224,11 @@ MODEL_KEYS = (
     "inputs", "dtypes", "properties", "reference", "reference_precision", "rtol", "atol", "nan",
     "finite", "allow_nonfinite", "may_raise", "exclude", "include", "ignore", "bounds", "monotonic",
     "monotonic_arg", "batched", "batch_axis", "fp_signals", "out_dtype", "check_mutation", "kwargs",
-    "n", "large_n", "seed", "ref_upcast", "domain", "rationale",
+    "n", "large_n", "seed", "ref_upcast", "domain", "elementwise", "rationale",
 )
 #: Keys of a ``[[target]]`` table (and of ``[defaults]``, except name/function).
 TARGET_KEYS = MODEL_KEYS + ("name", "function", "backend", "reference_function", "extra_cases",
-                            "description")
+                            "description", "grad", "grad_rtol")
 
 
 class _V:
@@ -402,7 +402,7 @@ def validate_spec_doc(doc: Any, *, allowed: Sequence[str] = TARGET_KEYS, where: 
                 val.err(key, f"must be one of {', '.join(choices)}")
             else:
                 out[key] = doc[key]
-    for key in ("finite", "batched", "check_mutation", "ref_upcast"):
+    for key in ("finite", "batched", "check_mutation", "ref_upcast", "elementwise", "grad"):
         if key in doc:
             if not isinstance(doc[key], bool):
                 val.err(key, "must be true or false")
@@ -416,6 +416,12 @@ def validate_spec_doc(doc: Any, *, allowed: Sequence[str] = TARGET_KEYS, where: 
                 val.err(key, f"must be an integer in [{lo}, {hi}]")
             else:
                 out[key] = v
+    if "grad_rtol" in doc:
+        g = doc["grad_rtol"]
+        if not _is_num(g) or not 0 < float(g) < 1:
+            val.err("grad_rtol", "must be a number in (0, 1)")
+        else:
+            out["grad_rtol"] = float(g)
     for key in ("rtol", "atol"):
         if key in doc:
             t = _tol(doc[key], key, val)
@@ -507,7 +513,7 @@ def spec_kwargs(doc: Mapping[str, Any], fn: Callable[..., Any] | None = None, *,
     for key in ("dtypes", "properties", "allow_nonfinite", "may_raise", "exclude", "include", "ignore",
                 "nan", "fp_signals", "monotonic", "finite", "batched", "check_mutation", "ref_upcast",
                 "n", "large_n", "seed", "batch_axis", "monotonic_arg", "rtol", "atol", "kwargs", "backend",
-                "extra_cases"):
+                "extra_cases", "elementwise", "grad", "grad_rtol"):
         if key in doc:
             kw[key] = doc[key]
     if "bounds" in doc:
@@ -558,7 +564,7 @@ _DOC_ORDER = ("inputs", "domain", "dtypes", "properties", "reference", "referenc
               "reference_function", "rtol", "atol", "nan", "finite", "allow_nonfinite", "may_raise",
               "exclude", "include", "ignore", "bounds", "monotonic", "monotonic_arg", "batched",
               "batch_axis", "fp_signals", "out_dtype", "check_mutation", "kwargs", "n", "large_n",
-              "seed", "ref_upcast", "backend", "extra_cases")
+              "seed", "ref_upcast", "backend", "elementwise", "grad", "grad_rtol", "extra_cases")
 
 
 def render_toml_target(doc: Mapping[str, Any], function: str, name: str | None = None) -> str:

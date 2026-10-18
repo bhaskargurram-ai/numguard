@@ -20,7 +20,8 @@ numguard check --config numguard.toml --target logsumexp --json-out result.json 
 Single-function options (override an attached `@numguard.guard` spec):
 `--ref MODULE:FUNC`, `--dtype float16|float32|float64|bfloat16` (repeatable),
 `--prop NAME[:VALUE]` (repeatable), `--domain`, `--nan propagate|raise|ignore`,
-`--batched`, `--monotonic increasing|decreasing`, `--fp-signals ignore|fail`,
+`--batched`, `--elementwise`, `--grad` (with `--backend jax|torch`),
+`--monotonic increasing|decreasing`, `--fp-signals ignore|fail`,
 `--rtol`, `--atol`, `--large-n`, `--seed`, `--exclude` (repeatable),
 `--allow-nonfinite` (repeatable), `--backend numpy|torch|jax|cupy`,
 `--json` (print the report as JSON), `--max-rows`.

@@ -20,6 +20,7 @@ from .cases import (
 )
 from .backends import BACKENDS
 from .checks import run_checks
+from .gradcheck import GRAD_BACKENDS
 from .dtypes import BFLOAT16, dtype_name, round_bf16, storage_dtype, validate_dtype
 from .properties import Property, PropertyLike, parse_property
 from .report import Report
@@ -81,6 +82,10 @@ class Spec:
     exclude: tuple[str, ...] = ()
     arg_names: tuple[str, ...] = ()
     backend: str = "numpy"
+    elementwise: bool = False
+    grad: Any = False
+    grad_reference: Callable[..., Any] | None = None
+    grad_rtol: float | None = None
 
     def __post_init__(self) -> None:
         if self.nan not in _NAN_POLICIES:
@@ -92,6 +97,13 @@ class Spec:
         object.__setattr__(self, "dtypes", tuple(validate_dtype(d) for d in self.dtypes))
         if self.backend not in BACKENDS:
             raise ValueError(f"backend must be one of {BACKENDS}, got {self.backend!r}")
+        if self.grad is True and self.backend not in GRAD_BACKENDS:
+            raise ValueError("grad=True uses automatic differentiation, which needs backend='jax' "
+                             "or backend='torch'; pass grad=<function> to check an analytic gradient")
+        if self.grad not in (None, False, True) and not callable(self.grad):
+            raise TypeError("grad must be True, False or a function returning the gradient")
+        if self.grad_reference is not None and self.grad in (None, False):
+            raise ValueError("grad_reference needs grad=True or grad=<function>")
 
     def replace(self, **changes: Any) -> "Spec":
         """Return a copy with some fields changed (``None`` values are ignored)."""
@@ -302,7 +314,13 @@ def check(
     plain reference with float64-upcast inputs, default True), ``n``, ``large_n``,
     ``seed``, ``include``/``exclude``, ``backend`` (``"numpy"`` (default),
     ``"torch"``, ``"jax"`` or ``"cupy"``: inputs are converted to that
-    library's arrays, outputs back to NumPy; see :mod:`numguard.backends`).
+    library's arrays, outputs back to NumPy; see :mod:`numguard.backends`),
+    ``elementwise`` (bool: each output element depends only on the same input
+    element; enables the ``isolation`` check and faster finite differences),
+    ``grad`` (``True`` for JAX/PyTorch automatic differentiation, or a function
+    returning the gradient of ``sum(f)`` per floating argument), ``grad_reference``
+    (a float64 function returning the exact gradient; default: finite differences
+    of ``reference`` or of ``fn`` in float64) and ``grad_rtol``.
     ``dtypes`` may include ``"bfloat16"`` (emulated; see :mod:`numguard.dtypes`).
     """
     if spec is None:

@@ -73,6 +73,8 @@ Every key except `function` is optional. Keys that are also
 | `bounds` | `[lo, hi]` | every finite output value must lie in this interval |
 | `monotonic`, `monotonic_arg` | string, int | `increasing` / `decreasing` in argument `monotonic_arg` (default 0) |
 | `batched`, `batch_axis` | bool, int | `f(stack(xs)) == stack(f(x))` along `batch_axis` |
+| `elementwise` | bool | each output element depends only on the same input element: enables the `isolation` check |
+| `grad`, `grad_rtol` | bool, number | check gradients from automatic differentiation (`backend = "jax"` or `"torch"`) against float64 finite differences; `grad_rtol` overrides the gradient tolerance |
 | `fp_signals` | string | `ignore` (default) or `fail` on overflow / invalid / divide-by-zero for finite inputs |
 | `out_dtype` | string or list | `"preserve"` (default), `"none"` (no dtype check), a dtype, or one per output |
 | `check_mutation` | bool | fail when the function modifies its inputs in place (default `true`) |

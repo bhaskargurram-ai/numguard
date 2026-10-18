@@ -82,7 +82,8 @@ numguard asks the questions a numerical analyst would ask of your function, and 
 
 - Does it stay **finite** where the true answer is finite?
 - Does it **agree with a trusted reference**, ideally a higher-precision one, within a tolerance you can state in ULPs?
-- Does it keep the **invariants** it should: shifting, scaling, permuting, batching, monotonicity, bounds?
+- Does it keep the **invariants** it should: shifting, scaling, permuting, batching, monotonicity, bounds, and results that don't depend on the other elements of the array?
+- Are its **gradients** right? Automatic differentiation in JAX or PyTorch is compared with float64 finite differences at the same edge cases.
 - Does it **respect its dtype**: no silent upcasting, no in-place mutation of its inputs, NaN handled the way you said?
 
 A careful implementation passes; a plausible-looking naive one gets a table that shows exactly which input breaks it and how.
@@ -343,10 +344,22 @@ Patterns in `include`, `exclude`, `allow_nonfinite`, `may_raise` and `ignore` ma
 | `batch` | `batched=True`: `f(stack(xs, axis)) != stack(f(x) for x in xs)` |
 | `monotonic` | `monotonic="increasing"/"decreasing"`: the order is violated on sorted inputs |
 | `prop:<name>` | a metamorphic property fails |
+| `isolation` | `elementwise=True`: an element's result changes when it is computed alone, or next to other cases' inputs (NaN, inf, huge, tiny), e.g. one convergence loop shared by the whole array |
+| `grad` | `grad=True` (JAX, PyTorch) or `grad=fn`: the gradient of `sum(f)` disagrees with float64 finite differences (or `grad_reference`) |
+| `grad:primal` | `grad=True`: the primal value a forward-mode `jvp` returns differs from `f(x)` (a custom JVP rule returning the wrong value) |
+| `grad:forward` | `grad=True` and `elementwise=True`: forward-mode and reverse-mode derivatives disagree |
 
 Floating-point signals raised while the function runs are recorded on every result (`[fp: overflow]` in the table) as evidence. They only cause failures with `fp_signals="fail"`.
 
 **Properties** are strings with an optional `:value`, or `numguard.Property` objects: `permutation_invariant`, `permutation_equivariant`, `translation_invariant[:c]`, `translation_equivariant[:c]`, `scale_invariant[:factor]`, `scale_equivariant[:exponent]` (the default factor 2 is exact in binary floating point), `symmetric`, `odd`, `even`. They are checked on regular cases; a transformed input that would leave the domain is skipped.
+
+**Gradients.** `grad=True` differentiates through JAX (`jax.grad`, `jax.jvp`) or PyTorch (`torch.autograd`, `torch.func.jvp`); with plain NumPy, pass the gradient function yourself (`grad=lambda x: np.cos(x)` for `np.sin`). The reference is `grad_reference` if given, otherwise Richardson-extrapolated central differences in float64 of `reference` (or of the function itself evaluated in float64). Each estimate carries its own error bound, and points where finite differences can't be trusted are skipped, not reported: a step that would leave the domain, a kink such as `abs` at 0, or a function that varies faster than the step can resolve. Gradient tolerances are 5e-2 for float16 and bfloat16, 2e-3 for float32 and 1e-6 for float64 (`grad_rtol=` overrides). Declaring `elementwise=True` makes finite differences one vectorized pass instead of one element at a time.
+
+```python
+import jax, jax.numpy as jnp, numpy as np, numguard
+jax.config.update("jax_enable_x64", True)
+numguard.check(jnp.tanh, reference=np.tanh, backend="jax", grad=True, elementwise=True)
+```
 
 **Tolerances.** Defaults are rtol 1e-2 for float16, 1e-5 for float32 and 1e-12 for float64. Relative errors are measured against `max(|expected|, finfo.tiny)`. Pass `rtol`/`atol` as numbers, or as dicts keyed by dtype name such as `{"float32": 1e-4, "uint8": 1}`.
 
@@ -369,7 +382,7 @@ numguard.check(my_log1p, reference=ref, domain="(-1, inf)")
 <details>
 <summary><b>All <code>check()</code> options</b></summary>
 
-`inputs=`, `domain=`, `reference=`, `properties=`, `dtypes=`, `rtol=`, `atol=`, `nan="propagate" | "raise" | "ignore"`, `allow_nonfinite=[...]`, `may_raise=[...]`, `out_dtype=` (default `"preserve"`), `batched=`, `batch_axis=`, `monotonic=`, `bounds=`, `fp_signals="ignore" | "fail"`, `postconditions=[fn]`, `extra_cases={...}`, `include=`/`exclude=`, `ignore=["check:pattern"]`, `kwargs=` (forwarded to the function), `ref_kwargs=`, `n=`, `large_n=`, `seed=`, `backend=`. `@numguard.guard` and the pytest marker accept the same names; `[[target]]` tables accept the ones that can be written in TOML (see [docs/CONFIG.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CONFIG.md)).
+`inputs=`, `domain=`, `reference=`, `properties=`, `dtypes=`, `rtol=`, `atol=`, `nan="propagate" | "raise" | "ignore"`, `allow_nonfinite=[...]`, `may_raise=[...]`, `out_dtype=` (default `"preserve"`), `batched=`, `batch_axis=`, `elementwise=`, `grad=`, `grad_reference=`, `grad_rtol=`, `monotonic=`, `bounds=`, `fp_signals="ignore" | "fail"`, `postconditions=[fn]`, `extra_cases={...}`, `include=`/`exclude=`, `ignore=["check:pattern"]`, `kwargs=` (forwarded to the function), `ref_kwargs=`, `n=`, `large_n=`, `seed=`, `backend=`. `@numguard.guard` and the pytest marker accept the same names; `[[target]]` tables accept the ones that can be written in TOML (see [docs/CONFIG.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CONFIG.md)).
 
 </details>
 
