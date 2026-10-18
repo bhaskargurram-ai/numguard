@@ -361,3 +361,20 @@ class CheckConfigCommandTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TargetPathTests(unittest.TestCase):
+    def test_windows_paths_are_accepted(self):
+        from numguard.specdoc import validate_spec_doc  # noqa: PLC0415
+
+        for target in (r"C:\Users\RUNNER~1\AppData\Local\Temp\tmp1\numops.py:lse",
+                       "C:/work/ops.py:softmax", "pkg.module:func", "path/to/file.py:func"):
+            out = validate_spec_doc({"function": target}, require_function=True)
+            self.assertEqual(out["function"], target)
+
+    def test_odd_targets_are_rejected(self):
+        from numguard.specdoc import SpecDocError, validate_spec_doc  # noqa: PLC0415
+
+        for target in ("; rm -rf /:f", "ops.py", "ops.py:1bad"):
+            with self.assertRaises(SpecDocError):
+                validate_spec_doc({"function": target}, require_function=True)

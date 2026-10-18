@@ -66,7 +66,10 @@ _MONO = ("increasing", "decreasing")
 MAX_EXPR_CHARS = 2000
 MAX_EXPR_NODES = 400
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
-_TARGET_RE = re.compile(r"^[A-Za-z0-9_./\\-]+(\.py)?:[A-Za-z_][A-Za-z0-9_.]*$|^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$")
+# A path target may start with a Windows drive ("C:\\...") and contain the
+# "~" of short 8.3 names; the function name is after the last colon.
+_TARGET_RE = re.compile(r"^(?:[A-Za-z]:)?[A-Za-z0-9_./\\~-]+(\.py)?:[A-Za-z_][A-Za-z0-9_.]*$"
+                        r"|^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$")
 
 
 class SpecDocError(ValueError):
