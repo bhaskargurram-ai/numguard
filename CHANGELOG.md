@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `numguard scan --timeout SECONDS` (default 300): a hard per-function limit, so one slow function (JAX recompiles for every new input shape) cannot stall a scan. A function over the limit is recorded as an error and the scan moves on.
+
 ## [1.1.0] - 2026-10-18
 
 ### Added

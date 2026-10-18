@@ -26,9 +26,12 @@ anywhere.
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import inspect
 import re
+import signal
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Sequence
@@ -39,7 +42,7 @@ from .api import check
 from .backends import BackendError, wrap
 from .report import Report
 
-__all__ = ["ScanEntry", "ScanResult", "scan_module", "public_functions", "probe"]
+__all__ = ["ScanEntry", "ScanResult", "ScanTimeout", "scan_module", "public_functions", "probe"]
 
 #: Name fragments of functions that are not pure numerical functions.
 _SKIP_NAME = re.compile(
@@ -207,15 +210,50 @@ def probe(fn: Callable[..., Any], arity: int, backend: str = "numpy") -> tuple[s
     return last
 
 
+class ScanTimeout(BaseException):
+    """A function took longer than the scan's per-function limit.
+
+    A ``BaseException`` (like ``KeyboardInterrupt``) so that the ``except
+    Exception`` handlers that record a function's errors as results do not
+    swallow it.
+    """
+
+
+@contextlib.contextmanager
+def _time_limit(seconds: float):  # noqa: ANN202
+    """Raise :class:`ScanTimeout` after ``seconds`` (POSIX main thread only; elsewhere no limit)."""
+    usable = (seconds and seconds > 0 and hasattr(signal, "setitimer")
+              and threading.current_thread() is threading.main_thread())
+    if not usable:
+        yield
+        return
+
+    def handler(signum, frame):  # noqa: ANN001, ARG001
+        raise ScanTimeout(f"took longer than {seconds:g} s")
+
+    old = signal.signal(signal.SIGALRM, handler)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
+
+
 def scan_module(module_name: str, *, reference_module: str | None = None, backend: str = "numpy",
                 dtypes: Sequence[str] = ("float32", "float64"), include: Sequence[str] = (),
                 exclude: Sequence[str] = (), budget_s: float = 30.0, large_n: int = 4096,
+                timeout_s: float = 300.0,
                 progress: Callable[[str], None] | None = None) -> ScanResult:
     """Check every public numerical function of ``module_name``.
 
     ``include``/``exclude`` are regular expressions on function names.
     ``budget_s`` bounds the time spent on one function: a function whose
     first dtype already took longer is not checked in the other dtypes.
+    ``timeout_s`` is a hard limit per function (probe and checks), enforced
+    with a timer signal on POSIX systems; a function that exceeds it is
+    recorded as ``error`` and the scan moves on. Libraries that compile per
+    input shape, such as JAX, can need minutes per function.
     """
     mod = importlib.import_module(module_name)
     ref_mod = importlib.import_module(reference_module) if reference_module else None
@@ -237,10 +275,15 @@ def scan_module(module_name: str, *, reference_module: str | None = None, backen
             entry.reason = "needs 1-3 positional array arguments"
             continue
         entry.arity = arity
+        t0 = time.perf_counter()
         try:
-            found = probe(fn, arity, backend)
+            with _time_limit(timeout_s):
+                found = probe(fn, arity, backend)
         except BackendError as err:
             entry.status, entry.reason = "error", str(err)
+            continue
+        except ScanTimeout as err:
+            entry.status, entry.reason = "error", f"probe {err}"
             continue
         if isinstance(found, str):
             entry.reason = found
@@ -259,16 +302,21 @@ def scan_module(module_name: str, *, reference_module: str | None = None, backen
             entry.elementwise = True
         if progress:
             progress(name)
-        t0 = time.perf_counter()
         reports: list[Report] = []
         try:
-            for i, dt in enumerate(dtypes):
-                if i and time.perf_counter() - t0 > budget_s:
-                    break
-                reports.append(check(
-                    fn, inputs=[entry.domain] * arity, reference=ref if entry.reference else None,
-                    dtypes=[dt], backend=backend, elementwise=entry.elementwise,
-                    finite=bool(entry.reference), large_n=large_n, name=f"{module_name}.{name}"))
+            with _time_limit(max(1.0, timeout_s - (time.perf_counter() - t0))):
+                for i, dt in enumerate(dtypes):
+                    if i and time.perf_counter() - t0 > budget_s:
+                        break
+                    reports.append(check(
+                        fn, inputs=[entry.domain] * arity, reference=ref if entry.reference else None,
+                        dtypes=[dt], backend=backend, elementwise=entry.elementwise,
+                        finite=bool(entry.reference), large_n=large_n, name=f"{module_name}.{name}"))
+        except ScanTimeout as err:
+            if not reports:
+                entry.status, entry.reason = "error", str(err)
+                entry.seconds = time.perf_counter() - t0
+                continue
         except Exception as err:  # noqa: BLE001 - one bad function must not stop the scan
             entry.status, entry.reason = "error", f"{type(err).__name__}: {err}"[:300]
             continue

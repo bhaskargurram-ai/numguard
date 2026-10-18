@@ -49,7 +49,8 @@ Check every public numerical function of a module, probing each for its
 arity, domain and whether it is elementwise: `--ref MODULE` (same-named
 reference functions), `--backend numpy|torch|jax|cupy`, `--dtype`
 (repeatable), `--include REGEX`/`--exclude REGEX` (repeatable),
-`--budget SECONDS` (per function), `--json`, `--json-out FILE`,
+`--budget SECONDS` (per function, skips further dtypes), `--timeout SECONDS`
+(hard limit per function, default 300), `--json`, `--json-out FILE`,
 `--fail-on-flag` (exit 1 if any function has a failing check),
 `--max-rows`. Results are candidates to triage.
 

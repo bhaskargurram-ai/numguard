@@ -154,3 +154,31 @@ class ScanTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ScanTimeoutTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(__import__("signal"), "setitimer"), "needs POSIX timers")
+    def test_slow_function_is_recorded_and_the_scan_continues(self):
+        import time as _time  # noqa: PLC0415
+        import types  # noqa: PLC0415
+
+        mod = types.ModuleType("scan_slow_mod")
+
+        def slow(x):
+            if np.size(x) > 1:
+                _time.sleep(5)
+            return np.exp(x)
+
+        mod.slow = slow
+        mod.fast = np.exp
+        sys.modules["scan_slow_mod"] = mod
+        try:
+            t0 = _time.perf_counter()
+            res = scan_module("scan_slow_mod", timeout_s=1.0)
+            self.assertLess(_time.perf_counter() - t0, 4)
+        finally:
+            sys.modules.pop("scan_slow_mod", None)
+        by = {e.name: e for e in res.entries}
+        self.assertEqual(by["slow"].status, "error")
+        self.assertIn("longer than", by["slow"].reason)
+        self.assertEqual(by["fast"].status, "checked")
