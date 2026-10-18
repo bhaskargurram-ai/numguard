@@ -30,9 +30,11 @@ nav:
   - Config file: config.md
   - Command line: cli.md
   - GitHub integration: github.md
+  - GitHub workflows in detail: GITHUB.md
   - Hypothesis strategies: hypothesis.md
   - Bug corpus: corpus.md
   - Agent (experimental): agent.md
+  - Agent in detail: AGENT.md
   - Security model: security.md
   - Comparison and FAQ: compare.md
   - Limitations and roadmap: limitations.md
