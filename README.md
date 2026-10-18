@@ -68,6 +68,7 @@ print(report.summary())
 - [Verification toolkit](#part-of-a-verification-toolkit) · [How to cite](#how-to-cite)
 - [Contributing](#contributing) · [License](#license)
 
+<!-- --8<-- [start:why] -->
 ## Why edge cases?
 
 A happy-path test for numerical code checks one comfortable input, usually something like `[1.0, 2.0, 3.0]`. The bugs live elsewhere:
@@ -88,6 +89,9 @@ numguard asks the questions a numerical analyst would ask of your function, and 
 
 A careful implementation passes; a plausible-looking naive one gets a table that shows exactly which input breaks it and how.
 
+<!-- --8<-- [end:why] -->
+
+<!-- --8<-- [start:how] -->
 ## How it works
 
 <p align="center">
@@ -102,6 +106,9 @@ A careful implementation passes; a plausible-looking naive one gets a table that
 
 An LLM never decides a result. The [agent](#agent-experimental) can draft a spec or propose a rewrite, and either one only counts after numguard has executed it.
 
+<!-- --8<-- [end:how] -->
+
+<!-- --8<-- [start:quickstart] -->
 ## Quick start
 
 ### 1. Install
@@ -307,6 +314,9 @@ The `bhaskargurram-ai/numguard@v1.1.0` composite action ([`action.yml`](https://
 
 </details>
 
+<!-- --8<-- [end:quickstart] -->
+
+<!-- --8<-- [start:catalogue] -->
 ## The edge-case catalogue
 
 <p align="center">
@@ -337,6 +347,9 @@ The catalogue is placed where naive formulas break, for each dtype under test. `
 
 Patterns in `include`, `exclude`, `allow_nonfinite`, `may_raise` and `ignore` match a case name (glob), its kind or any of its tags, so `allow_nonfinite=["overflow_prone"]` covers `huge`, `large` and `wide_range` at once.
 
+<!-- --8<-- [end:catalogue] -->
+
+<!-- --8<-- [start:checks] -->
 ## Checks
 
 | check | fails when |
@@ -397,6 +410,9 @@ numguard.check(my_log1p, reference=ref, domain="(-1, inf)")
 
 **What the checks can't tell you.** Without a reference, the `finite` check can't tell a result that legitimately overflows (such as `hypot(1.7e308, 1.7e308)`) from a bug: pass a reference or mark such cases with `allow_nonfinite`. numguard tests the cases it generates against the contract you declare. It does not prove correctness.
 
+<!-- --8<-- [end:checks] -->
+
+<!-- --8<-- [start:pytest] -->
 ## pytest plugin
 
 Installing numguard registers a pytest plugin (`pytest11` entry point). Use it two ways:
@@ -411,6 +427,9 @@ pytest --numguard-dtypes float16,float32 --numguard-large-n 1000000 --numguard-b
 
 `numguard_modules` can also be set in `[tool.pytest.ini_options]`. In CI, add a `[pytest]` table to `numguard.toml` and `numguard check --config` runs your suite with the plugin active and puts the pass/fail counts on the card.
 
+<!-- --8<-- [end:pytest] -->
+
+<!-- --8<-- [start:config] -->
 ## Config file
 
 `numguard.toml` lists functions to check without touching their source, which is what CI uses. `numguard check` reads `./numguard.toml` (or `--config FILE`; `--target NAME` runs one target). `numguard init` writes this commented starting point ([`examples/numguard.toml`](https://github.com/bhaskargurram-ai/numguard/blob/main/examples/numguard.toml), header trimmed):
@@ -469,6 +488,9 @@ monotonic = "increasing"
 
 In the GitHub workflow **the file is read from the PR's base commit**, so a pull request cannot loosen its own checks. Every key is documented in [docs/CONFIG.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CONFIG.md).
 
+<!-- --8<-- [end:config] -->
+
+<!-- --8<-- [start:backends] -->
 ## Backends
 
 Cases are always generated, and results always compared, in NumPy. With `backend="torch"`, `"jax"` or `"cupy"` (CLI `--backend`, config `backend =`, pytest `--numguard-backend`), an adapter converts each input to the backend's arrays before the call and converts the outputs back (`np.from_dlpack` / `np.asarray`), recording each output's backend dtype for the `dtype` check. The reference is always called with NumPy arrays.
@@ -484,6 +506,9 @@ These libraries are optional and not installed with numguard. numguard's own tes
 
 **bfloat16.** `dtypes = ["bfloat16"]` builds cases from bfloat16's own limits (max about 3.39e38, eps 2^-7) and hands them to the function as `torch.bfloat16`, `jax.numpy.bfloat16` or, on the NumPy backend, `ml_dtypes.bfloat16` arrays (`pip install "numguard-ci[bfloat16]"`). Default rtol is 6e-2 and ULPs are counted in bfloat16 units.
 
+<!-- --8<-- [end:backends] -->
+
+<!-- --8<-- [start:hypothesis] -->
 ## Hypothesis strategies
 
 If you already use [Hypothesis](https://hypothesis.readthedocs.io/), `numguard.strategies` turns a numguard spec into strategies (`pip install "numguard-ci[hypothesis]"`; numguard itself does not depend on Hypothesis):
@@ -505,6 +530,9 @@ def test_softmax_sums_to_one(args):
 
 `target` is a `numguard.Spec`, a function decorated with `@numguard.guard`, or a function plus the keyword arguments of `numguard.check`. You keep Hypothesis's shrinking and example database and add the inputs numerical code tends to get wrong.
 
+<!-- --8<-- [end:hypothesis] -->
+
+<!-- --8<-- [start:corpus] -->
 ## The bug corpus
 
 [`corpus/`](https://github.com/bhaskargurram-ai/numguard/tree/main/corpus) contains 12 self-contained tasks, each **inspired by a real class of numerical bug** in AI-written and human-written array code. Each task folder has:
@@ -600,6 +628,9 @@ The harness only reads files, so any agent, or a person, can be graded:
 
 Missing solutions are reported as `missing` and solutions that fail to import as `error`. `--task NAME` (repeatable) grades a subset and `--solution-name` handles another file name. `solution.py` is imported and run **in-process**: grade untrusted code inside a container. [`numguard bench`](#numguard-bench) automates all three steps for an LLM.
 
+<!-- --8<-- [end:corpus] -->
+
+<!-- --8<-- [start:agent] -->
 ## Agent (experimental)
 
 Three commands use an LLM. All three are **off unless you call them**, need your own API key, and follow the same rule as the rest of numguard: **the model proposes, numguard executes, and only the executed result counts.**
@@ -670,6 +701,9 @@ The agent workflow splits `fix` into `numguard agent propose` (holds the key, re
 
 **Be realistic about it.** We have not published `bench` results for any model, and we have not measured how often `suggest` or `fix` produce something useful: there are no agent numbers in this README because none were measured. "Verified" is relative to the spec and to numguard's cases; it is not a proof of correctness, so review a rewrite like any other patch. The corpus has 12 tasks, enough to separate naive from careful implementations and far too few to rank models with confidence. Details: [docs/AGENT.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/AGENT.md).
 
+<!-- --8<-- [end:agent] -->
+
+<!-- --8<-- [start:github] -->
 ## GitHub integration
 
 The check workflow runs `numguard check --config` (plus pytest when `numguard.toml` has a `[pytest]` table), writes a Markdown **card** to the job summary, and uploads `result.json`, `card.md`, the PR number and head SHA as the `numguard-result` artifact. The privileged comment workflow validates the artifact, re-renders the card and upserts one sticky PR comment.
@@ -687,6 +721,9 @@ The check workflow runs `numguard check --config` (plus pytest when `numguard.to
 | **Suggested fixes** | Only when the agent workflow ran: a collapsible "suggested fix (verified)" diff per target. |
 | **Data block** | Invisible: a `<!-- numguard:data {...} -->` comment with the status, per-target counts and checks as JSON, built from validated fields only (escaped, capped at 4000 characters). Read it with `numguard.carddata.parse_card_data`. |
 
+<!-- --8<-- [end:github] -->
+
+<!-- --8<-- [start:security] -->
 ## Security model
 
 Running a pull request's code next to a token or an API key is the dangerous part. numguard splits the work into three trust zones connected only by artifacts:
@@ -703,6 +740,9 @@ Running a pull request's code next to a token or an API key is the dangerous par
 
 The subprocess denylist is a speed bump, not a sandbox: Python can reach most things in many ways. The real isolation on GitHub is the job split. Locally, `numguard fix` runs the candidate in a subprocess on your machine; run it in a container if you don't trust the model. A malicious PR can still tamper with its own results inside the unprivileged job. See [docs/SECURITY_MODEL.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/SECURITY_MODEL.md) and [docs/AGENT.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/AGENT.md).
 
+<!-- --8<-- [end:security] -->
+
+<!-- --8<-- [start:compares] -->
 ## How numguard compares
 
 Different tools answer different questions. This is our best reading of each as of October 2026; corrections are welcome.
@@ -723,6 +763,9 @@ These tools are complementary. Herbie's search-based rewriting with a real accur
 
 **numguard's own gaps:** no shrinking and no search beyond its catalogue and seeded random inputs; no proofs; the corpus is small; backends other than NumPy are not exercised against the real libraries in CI; agent rewrites are LLM proposals filtered by checks, not synthesized with an accuracy guarantee, and in CI they get one round.
 
+<!-- --8<-- [end:compares] -->
+
+<!-- --8<-- [start:reference] -->
 ## Configuration and CLI reference
 
 The full references are [docs/CONFIG.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CONFIG.md), [docs/CLI.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/CLI.md) and [docs/GITHUB.md](https://github.com/bhaskargurram-ai/numguard/blob/main/docs/GITHUB.md). Every command has `--help`.
@@ -803,6 +846,9 @@ If the target has a spec attached with `@numguard.guard`, the CLI uses it and co
 
 </details>
 
+<!-- --8<-- [end:reference] -->
+
+<!-- --8<-- [start:faq] -->
 ## FAQ
 
 <details>
@@ -854,6 +900,9 @@ So that no single job both runs PR code and holds a secret or a write token. A s
 
 </details>
 
+<!-- --8<-- [end:faq] -->
+
+<!-- --8<-- [start:limitations] -->
 ## Limitations
 
 - The catalogue is fixed plus seeded random values: numguard doesn't search for new failing inputs or shrink them.
@@ -863,6 +912,9 @@ So that no single job both runs PR code and holds a secret or a write token. A s
 - `eval` and `bench` import candidate solutions in-process; grade untrusted code in a container.
 - The agent is experimental, its success rate is unmeasured, and a verified rewrite is only as good as the spec and cases it passed. Rewrites replace one module-level Python function; methods, C extensions and multi-file changes are out of scope.
 
+<!-- --8<-- [end:limitations] -->
+
+<!-- --8<-- [start:roadmap] -->
 ## Roadmap
 
 - Gradient checks for functions with several outputs, and at support edges of distributions
@@ -872,6 +924,9 @@ So that no single job both runs PR code and holds a secret or a write token. A s
 - Native support for the [Python array API standard](https://data-apis.org/array-api/) in the backend adapter
 - Published `bench` results, run on GitHub with the numbers and costs alongside
 
+<!-- --8<-- [end:roadmap] -->
+
+<!-- --8<-- [start:toolkit] -->
 ## Part of a verification toolkit
 
 numguard is one of three tools for checking whether scientific and ML computations are actually correct, including code written with AI assistance:
@@ -880,9 +935,14 @@ numguard is one of three tools for checking whether scientific and ML computatio
 - **[stataudit](https://github.com/bhaskargurram-ai/stataudit)** (`pip install stataudit`): Does a statistical conclusion survive its own data, given test assumptions, alternatives and multiple comparisons?
 - **[proofcheck](https://github.com/bhaskargurram-ai/proofcheck)** (`pip install proofcheck-ai`): Does a code change do what it claims: fail-to-pass tests, reproducer replay, claim-to-evidence mapping?
 
+<!-- --8<-- [end:toolkit] -->
+
+<!-- --8<-- [start:cite] -->
 ## How to cite
 
 If you use numguard in research, please cite it. The repository's [`CITATION.cff`](https://github.com/bhaskargurram-ai/numguard/blob/main/CITATION.cff) has the metadata; GitHub's "Cite this repository" button turns it into APA or BibTeX.
+
+<!-- --8<-- [end:cite] -->
 
 ## Contributing
 

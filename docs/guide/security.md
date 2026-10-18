@@ -1,0 +1,1 @@
+--8<-- "docs/SECURITY_MODEL.md"
