@@ -23,7 +23,7 @@ on:
       numguard-ref:
         description: Tag or commit SHA of numguard to install (keep it equal to the @ref of this workflow).
         type: string
-        default: v1.0.1
+        default: v1.1.0
       numguard-repository:
         description: Repository numguard is installed from.
         type: string

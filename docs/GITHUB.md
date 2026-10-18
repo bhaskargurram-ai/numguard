@@ -8,7 +8,7 @@ See [SECURITY_MODEL.md](SECURITY_MODEL.md) for the reasoning.
 ## Set up
 
 ```bash
-pip install "numguard-ci @ git+https://github.com/bhaskargurram-ai/numguard@v1.0.1"
+pip install "numguard-ci @ git+https://github.com/bhaskargurram-ai/numguard@v1.1.0"
 numguard init            # or: numguard init --agent
 ```
 
@@ -40,7 +40,7 @@ before expecting comments.
 | `config-from` | `base` | read the config from the PR's base commit when it exists there; `head` to use the PR's |
 | `fail-on` | `fail` | `fail`, `error` or `never` |
 | `numguard-extras` | `scipy` | extras installed with numguard (e.g. `scipy,mpmath`) |
-| `numguard-ref` | `v1.0.1` | numguard version to install; keep it equal to the `@ref` of the workflow |
+| `numguard-ref` | `v1.1.0` | numguard version to install; keep it equal to the `@ref` of the workflow |
 | `numguard-repository` | `bhaskargurram-ai/numguard` | |
 | `timeout-minutes` | 30 | |
 
@@ -104,7 +104,7 @@ Repository settings for the agent: secret `NUMGUARD_LLM_API_KEY`; variables
 
 ## The composite action
 
-`uses: bhaskargurram-ai/numguard@v1.0.1` with `command:`
+`uses: bhaskargurram-ai/numguard@v1.1.0` with `command:`
 
 | command | where | needs |
 |---|---|---|

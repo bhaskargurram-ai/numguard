@@ -6,8 +6,8 @@ abstract: "Numerical edge-case testing for array code: catch the NaNs, overflows
 authors:
   - family-names: Gurram
     given-names: Bhaskar
-version: "1.0.1"
-date-released: "2026-10-14"
+version: "1.1.0"
+date-released: "2026-10-18"
 license: MIT
 repository-code: "https://github.com/bhaskargurram-ai/numguard"
 url: "https://pypi.org/project/numguard-ci/"

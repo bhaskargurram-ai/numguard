@@ -32,9 +32,9 @@ jobs:
       contents: read
       actions: read
       pull-requests: read
-    uses: bhaskargurram-ai/numguard/.github/workflows/agent.yml@v1.0.1
+    uses: bhaskargurram-ai/numguard/.github/workflows/agent.yml@v1.1.0
     with:
-      numguard-ref: v1.0.1
+      numguard-ref: v1.1.0
       llm-provider: ${{ vars.NUMGUARD_LLM_PROVIDER }}
       llm-model: ${{ vars.NUMGUARD_LLM_MODEL }}
       llm-base-url: ${{ vars.NUMGUARD_LLM_BASE_URL }}
@@ -52,9 +52,9 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
-    uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.0.1
+    uses: bhaskargurram-ai/numguard/.github/workflows/comment.yml@v1.1.0
     with:
-      numguard-ref: v1.0.1
+      numguard-ref: v1.1.0
       # Trusted values: the PR number comes from the gate job (API data, no PR
       # code ran there) and the artifact from this run's verify job.
       pr-number: ${{ needs.agent.outputs.pr-number }}

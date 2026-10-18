@@ -22,9 +22,9 @@ concurrency:
 
 jobs:
   check:
-    uses: bhaskargurram-ai/numguard/.github/workflows/check.yml@v1.0.1
+    uses: bhaskargurram-ai/numguard/.github/workflows/check.yml@v1.1.0
     with:
-      numguard-ref: v1.0.1
+      numguard-ref: v1.1.0
       python-version: "3.12"
       # Installs the project under test; this runs PR code (unprivileged job).
       install-command: 'pip install -e ".[dev]" || pip install -e .'
