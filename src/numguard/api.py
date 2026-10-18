@@ -299,6 +299,8 @@ def check(
     spec:
         A prebuilt :class:`Spec` (other arguments then override its fields).
 
+    Notes
+    -----
     Other options (keyword-only) map to :class:`Spec` fields:
     ``finite`` (bool), ``nan`` (``"propagate"``/``"raise"``/``"ignore"``),
     ``allow_nonfinite`` and ``may_raise`` (case names/kinds/tags/globs),
