@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import signal
 import sys
 import tempfile
 import textwrap
@@ -95,18 +96,43 @@ REFERENCE = textwrap.dedent('''
 ''')
 
 
+HANG_MODULE = textwrap.dedent('''
+    import os
+    import signal
+    import time
+
+    import numpy as np
+
+    __all__ = ["fine_exp", "crash", "stuck"]
+
+    def fine_exp(x):
+        return np.exp(x)
+
+    def crash(x):
+        os._exit(3)  # like a segfault in native code: the process just ends
+
+    def stuck(x):
+        # like a C loop that never returns to Python: the timer signal is never handled
+        if hasattr(signal, "pthread_sigmask"):
+            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM})
+            time.sleep(120)
+        return np.exp(x)
+''')
+
+
 class ScanTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = Path(tempfile.mkdtemp(prefix="numguard-scan-"))
         (cls.tmp / "scan_target_mod.py").write_text(MODULE, encoding="utf-8")
         (cls.tmp / "scan_reference_mod.py").write_text(REFERENCE, encoding="utf-8")
+        (cls.tmp / "scan_hang_mod.py").write_text(HANG_MODULE, encoding="utf-8")
         sys.path.insert(0, str(cls.tmp))
 
     @classmethod
     def tearDownClass(cls):
         sys.path.remove(str(cls.tmp))
-        for m in ("scan_target_mod", "scan_reference_mod"):
+        for m in ("scan_target_mod", "scan_reference_mod", "scan_hang_mod"):
             sys.modules.pop(m, None)
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
@@ -146,6 +172,23 @@ class ScanTests(unittest.TestCase):
         self.assertEqual((by["builtin_exp"].status, by["builtin_exp"].arity), ("checked", 1))
         self.assertEqual((by["builtin_hypot"].status, by["builtin_hypot"].arity), ("checked", 2))
         self.assertEqual(by["builtin_hypot"].failed_checks, [])
+
+    def test_isolated_scan_survives_hangs_and_crashes(self):
+        from numguard import scan as scan_mod  # noqa: PLC0415
+
+        old = scan_mod.WORKER_GRACE_S
+        scan_mod.WORKER_GRACE_S = 20.0
+        try:
+            res = scan_module("scan_hang_mod", isolate=True, timeout_s=2.0, dtypes=["float64"])
+        finally:
+            scan_mod.WORKER_GRACE_S = old
+        by = {e.name: e for e in res.entries}
+        self.assertEqual((by["fine_exp"].status, by["fine_exp"].failed_checks), ("checked", []))
+        self.assertEqual(by["crash"].status, "error")
+        self.assertIn("worker process died", by["crash"].reason)
+        if hasattr(signal, "pthread_sigmask"):
+            self.assertEqual(by["stuck"].status, "error")
+            self.assertIn("killed after 22 s", by["stuck"].reason)
 
     def test_scan_with_reference_module(self):
         res = scan_module("scan_target_mod", reference_module="scan_reference_mod",

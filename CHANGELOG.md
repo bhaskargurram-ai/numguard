@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - A documentation site (MkDocs, with an API reference built from the docstrings), published with the landing page at https://bhaskargurram-ai.github.io/numguard/docs/. Its pages include the README's sections, so the two can't drift apart.
+- `numguard scan --isolate`: each function is checked in its own worker process, killed at the timeout. A timer can't interrupt native code that never returns to Python (in a scan of `torch.special`, `legendre_polynomial_p` did not return within 70 minutes), and a crash in one function no longer ends the scan.
 - `numguard scan --timeout SECONDS` (default 300): a hard per-function limit, so one slow function (JAX recompiles for every new input shape) cannot stall a scan. A function over the limit is recorded as an error and the scan moves on.
 
 ### Fixed

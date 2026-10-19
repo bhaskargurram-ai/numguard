@@ -29,6 +29,8 @@ from __future__ import annotations
 import contextlib
 import importlib
 import inspect
+import multiprocessing
+import queue as _queue
 import re
 import signal
 import threading
@@ -265,7 +267,7 @@ def _time_limit(seconds: float):  # noqa: ANN202
 def scan_module(module_name: str, *, reference_module: str | None = None, backend: str = "numpy",
                 dtypes: Sequence[str] = ("float32", "float64"), include: Sequence[str] = (),
                 exclude: Sequence[str] = (), budget_s: float = 30.0, large_n: int = 4096,
-                timeout_s: float = 300.0,
+                timeout_s: float = 300.0, isolate: bool = False,
                 progress: Callable[[str], None] | None = None) -> ScanResult:
     """Check every public numerical function of ``module_name``.
 
@@ -276,7 +278,18 @@ def scan_module(module_name: str, *, reference_module: str | None = None, backen
     with a timer signal on POSIX systems; a function that exceeds it is
     recorded as ``error`` and the scan moves on. Libraries that compile per
     input shape, such as JAX, can need minutes per function.
+
+    A timer cannot interrupt native code that never returns to Python (a C
+    loop over a degree of 1e30, say). With ``isolate=True`` each function
+    is checked in its own worker process, which is killed when it overruns
+    ``timeout_s`` (plus a grace period for imports); a worker that crashes
+    (a segfault, an abort) is recorded as an error too. Slower to start,
+    but one function can no longer stall or end the scan.
     """
+    if isolate:
+        return _scan_isolated(module_name, reference_module=reference_module, backend=backend, dtypes=dtypes,
+                              include=include, exclude=exclude, budget_s=budget_s, large_n=large_n,
+                              timeout_s=timeout_s, progress=progress)
     mod = importlib.import_module(module_name)
     ref_mod = importlib.import_module(reference_module) if reference_module else None
     result = ScanResult(module=module_name, backend=backend, reference_module=reference_module)
@@ -355,4 +368,67 @@ def scan_module(module_name: str, *, reference_module: str | None = None, backen
         for extra in reports[1:]:
             entry.report.results.extend(extra.results)
             entry.report.dtypes = list(dict.fromkeys(entry.report.dtypes + extra.dtypes))
+    return result
+
+
+#: Seconds a worker process gets on top of ``timeout_s`` for starting and importing.
+WORKER_GRACE_S = 60.0
+
+
+def _worker(out: Any, module_name: str, name: str, kwargs: dict[str, Any]) -> None:
+    try:
+        res = scan_module(module_name, include=[f"^{re.escape(name)}$"], **kwargs)
+        entry = next((e for e in res.entries if e.name == name), None)
+        out.put(entry if entry is not None else ScanEntry(name=name, status="error", reason="not found by worker"))
+    except BaseException as err:  # noqa: BLE001 - report everything to the parent
+        out.put(ScanEntry(name=name, status="error", reason=f"{type(err).__name__}: {err}"[:300]))
+
+
+def _scan_isolated(module_name: str, *, timeout_s: float, progress: Callable[[str], None] | None,
+                   **kwargs: Any) -> ScanResult:
+    mod = importlib.import_module(module_name)
+    result = ScanResult(module=module_name, backend=kwargs["backend"],
+                        reference_module=kwargs["reference_module"])
+    inc = [re.compile(p) for p in kwargs.pop("include")]
+    exc = [re.compile(p) for p in kwargs.pop("exclude")]
+    ctx = multiprocessing.get_context("spawn")
+    limit = timeout_s + WORKER_GRACE_S
+    for name, _ in public_functions(mod):
+        if (inc and not any(p.search(name) for p in inc)) or any(p.search(name) for p in exc):
+            continue
+        if _SKIP_NAME.search(name.lower()):
+            result.entries.append(ScanEntry(name=name, status="skipped", reason="not a numerical function (by name)"))
+            continue
+        if progress:
+            progress(name)
+        out = ctx.Queue()
+        proc = ctx.Process(target=_worker, args=(out, module_name, name, dict(kwargs, timeout_s=timeout_s)),
+                           daemon=True)
+        t0 = time.perf_counter()
+        proc.start()
+        entry = None
+        try:
+            while entry is None and time.perf_counter() - t0 < limit:
+                try:
+                    entry = out.get(timeout=0.5)
+                except _queue.Empty:
+                    if not proc.is_alive():  # ended without a result: give a late put a moment
+                        try:
+                            entry = out.get(timeout=1.0)
+                        except _queue.Empty:
+                            break
+        finally:
+            if proc.is_alive():
+                proc.join(5)
+            if proc.is_alive():
+                proc.kill()
+                proc.join()
+        if entry is None:
+            if proc.exitcode not in (None, 0) and time.perf_counter() - t0 < limit:
+                reason = f"worker process died (exit code {proc.exitcode})"
+            else:
+                reason = (f"killed after {limit:g} s: did not return (native code a timer cannot "
+                          "interrupt, or a hang)")
+            entry = ScanEntry(name=name, status="error", reason=reason, seconds=time.perf_counter() - t0)
+        result.entries.append(entry)
     return result

@@ -187,6 +187,8 @@ numguard scan jax.scipy.special --ref scipy.special --backend jax --json-out sca
 
 `numguard scan` finds a module's public functions and works out, by probing each one, how many array arguments it takes (1 to 3), a domain where it returns finite values (`any`, `positive` or `unit_interval`) and whether it is elementwise. It then runs the edge-case catalogue on each. With `--ref`, a function of the same name in the reference module is the reference, and the reference also decides whether a function counts as elementwise: an element that changes with its neighbours, which is the bug the `isolation` check looks for, would otherwise make the function look non-elementwise. Without `--ref`, the `finite` check is off, because nothing says whether an inf on a huge input is right. Flagged functions are candidates to triage against the documentation and the latest release, not bug reports.
 
+`--timeout` (default 300 s) limits each function. A timer can't interrupt native code that never returns to Python, so for libraries implemented in C or C++ add `--isolate`: each function then runs in its own worker process, which is killed at the timeout, and a crash ends only that worker. Both are recorded as errors and the scan moves on.
+
 ### 4. Add it to CI
 
 From the root of your repository:

@@ -405,13 +405,17 @@ def eval_cmd(candidate_dir: Path | None, baseline: str | None, tasks: tuple[str,
               help="Seconds per function after which further dtypes are skipped.")
 @click.option("--timeout", type=float, default=300.0, show_default=True,
               help="Hard limit in seconds per function (POSIX); a function over it is recorded as an error.")
+@click.option("--isolate", is_flag=True,
+              help="Check each function in its own worker process, killed at the timeout: survives hangs "
+                   "in native code and crashes.")
 @click.option("--json", "as_json", is_flag=True, help="Print the scan result as JSON.")
 @click.option("--json-out", type=click.Path(dir_okay=False, path_type=Path), default=None,
               help="Also write the JSON result here.")
 @click.option("--fail-on-flag", is_flag=True, help="Exit 1 if any function has a failing check.")
 @click.option("--max-rows", type=int, default=50, show_default=True)
 def scan_cmd(module: str, reference_module: str | None, backend: str, dtypes: tuple[str, ...],
-             include: tuple[str, ...], exclude: tuple[str, ...], budget: float, timeout: float, as_json: bool,
+             include: tuple[str, ...], exclude: tuple[str, ...], budget: float, timeout: float, isolate: bool,
+             as_json: bool,
              json_out: Path | None, fail_on_flag: bool, max_rows: int) -> None:
     """Check every public numerical function of MODULE.
 
@@ -429,7 +433,7 @@ def scan_cmd(module: str, reference_module: str | None, backend: str, dtypes: tu
     try:
         res = scan_module(module, reference_module=reference_module, backend=backend,
                           dtypes=dtypes or ("float32", "float64"), include=include, exclude=exclude,
-                          budget_s=budget, timeout_s=timeout, progress=progress)
+                          budget_s=budget, timeout_s=timeout, isolate=isolate, progress=progress)
     except ImportError as exc:
         raise click.ClickException(f"cannot import: {exc}") from exc
     doc = res.to_dict()
