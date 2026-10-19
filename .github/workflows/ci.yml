@@ -135,7 +135,7 @@ jobs:
           python -m pip install -q -r docs/requirements.txt -e .
           mkdocs build --site-dir _site 2>&1 | tee mkdocs.log
           grep -E "^(ERROR|WARNING)" mkdocs.log | sed 's/^/::warning title=mkdocs::/' || true
-          test -s _site/index.html && test -s _site/api/index.html
+          test -s _site/index.html && test -s _site/guide/api/index.html
 
   # Build the distributions and use them the way a user would: install the
   # wheel into a fresh virtualenv (outside the checkout) and run the CLI,

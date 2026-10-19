@@ -1,5 +1,3 @@
 --8<-- "README.md:config"
 
-## All keys
-
---8<-- "docs/CONFIG.md"
+Every key is listed in the [config reference](../CONFIG.md).

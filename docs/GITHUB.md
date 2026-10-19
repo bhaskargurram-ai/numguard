@@ -15,8 +15,8 @@ numguard init            # or: numguard init --agent
 `init` writes three small caller workflows that delegate to reusable
 workflows in this repository, plus a commented `numguard.toml` (it refuses to
 overwrite existing files without `--force`). The files in
-[`examples/workflows/`](../examples/workflows) and
-[`examples/numguard.toml`](../examples/numguard.toml) are exactly what
+[`examples/workflows/`](https://github.com/bhaskargurram-ai/numguard/blob/main/examples/workflows) and
+[`examples/numguard.toml`](https://github.com/bhaskargurram-ai/numguard/blob/main/examples/numguard.toml) are exactly what
 `numguard init --agent` writes.
 
 | caller | trigger | calls | does |
