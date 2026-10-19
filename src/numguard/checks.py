@@ -44,6 +44,7 @@ the reference, if any) once per case and then evaluates:
 
 from __future__ import annotations
 
+import dataclasses
 import fnmatch
 import time
 import warnings
@@ -270,7 +271,8 @@ def compare(actual: np.ndarray, expected: np.ndarray, *, rtol: Any = None, atol:
         max_ulp = float(u.max())
     ex = None
     if n_bad:
-        score = np.where(bad, np.where(mismatch_nonfinite, np.inf, rel.astype(np.float64)), -1.0)
+        with np.errstate(all="ignore"):
+            score = np.where(bad, np.where(mismatch_nonfinite, np.inf, rel.astype(np.float64)), -1.0)
         i = np.unravel_index(int(np.argmax(score)), score.shape)
         where = f" at {tuple(int(k) for k in i)}" if a.ndim else ""
         ex = f"got {_fmt_val(a[i])}, {label} {_fmt_val(e[i])}{where}"
@@ -356,7 +358,8 @@ def _round_like(ref: Any, out: np.ndarray, case: Case) -> np.ndarray:
     r = np.asarray(ref)
     if out.dtype.kind not in "fc":
         return r
-    r = r.astype(out.dtype)
+    with np.errstate(all="ignore"):  # beyond the dtype's range is +-inf, by design
+        r = r.astype(out.dtype)
     if case.dtype == BFLOAT16 and out.dtype == np.float32:
         r = round_bf16(r)
     return r
@@ -439,9 +442,13 @@ def _check_case(ctx: _Ctx, fn: Callable[..., Any], case: Case) -> Run:
             ctx.add("nan", case, FAIL, "NaN input did not raise", run=run)
         else:
             float_outs = [o for o in outs if o.dtype.kind in "fc" and o.size]
+            ref_float = [np.asarray(r) for r in (ref_outs or []) if np.asarray(r).dtype.kind in "fc"]
             if float_outs:
                 if any(np.isnan(o).any() for o in float_outs):
                     ctx.add("nan", case, PASS, run=run)
+                elif ref_float and not any(np.isnan(r).any() for r in ref_float):
+                    # nanmax, fmax, copysign(x, nan), a NaN mask argument: by design
+                    ctx.add("nan", case, PASS, "the reference does not propagate this NaN either", run=run)
                 else:
                     ctx.add("nan", case, FAIL,
                             "NaN input silently produced an all-finite/non-NaN output", run=run)
@@ -453,7 +460,7 @@ def _check_case(ctx: _Ctx, fn: Callable[..., Any], case: Case) -> Run:
                     f"reference raised {ref_run.error_text()} but function returned a value",
                     run=run)
         else:
-            _check_reference(ctx, case, run, ref_outs or [])
+            _check_reference(ctx, case, run, ref_outs or [], ref_fn=spec.reference)
 
     # ---- floating-point signals ------------------------------------------
     if spec.fp_signals == "fail" and case.finite_inputs and not allowed_nonfinite:
@@ -533,7 +540,50 @@ def _check_dtype(ctx: _Ctx, case: Case, run: Run) -> None:
     ctx.add("dtype", case, FAIL if problems else PASS, "; ".join(problems), run=run)
 
 
-def _check_reference(ctx: _Ctx, case: Case, run: Run, ref_outs: list[np.ndarray]) -> None:
+def _flush(a: np.ndarray) -> np.ndarray:
+    """``a`` with subnormal values replaced by zeros of the same sign (flush-to-zero)."""
+    if a.dtype.kind != "f":
+        return a
+    tiny = np.finfo(a.dtype).tiny
+    with np.errstate(all="ignore"):
+        return np.where(np.abs(a) < tiny, np.copysign(np.zeros_like(a), a), a)
+
+
+def _has_subnormal(arrays: Sequence[np.ndarray]) -> bool:
+    for a in arrays:
+        a = np.asarray(a)
+        if a.dtype.kind == "f" and a.size:
+            with np.errstate(all="ignore"):
+                if np.any((a != 0) & (np.abs(a) < np.finfo(a.dtype).tiny)):
+                    return True
+    return False
+
+
+def _ftz_explains(spec: "Spec", case: Case, outs: list[np.ndarray], ref_outs: list[np.ndarray],
+                  ref_fn: Callable[..., Any] | None) -> bool:
+    """Does the mismatch disappear when subnormal inputs and results are flushed to zero?
+
+    Many backends (XLA on CPU, GPU kernels, code built with -ffast-math)
+    treat subnormals as zero. A difference that only that explains is a
+    property of the floating-point mode, not of the function.
+    """
+    rounded = [_round_like(r, o, case) for r, o in zip(ref_outs, outs)]
+    if ref_fn is None or not (_has_subnormal(case.args) or _has_subnormal(outs) or _has_subnormal(rounded)):
+        return False
+    flushed_case = dataclasses.replace(case, args=tuple(_flush(np.asarray(a)) for a in case.args))
+    ref2 = call(ref_fn, _ref_args(ref_fn, flushed_case, spec.ref_upcast), spec.ref_kwargs, check_mutation=False)
+    if ref2.error is not None or len(ref2.outputs or []) != len(outs):
+        return False
+    for o, r, weak in zip(outs, ref2.outputs, [False] * len(outs)):
+        r = _round_like(r, o, case)
+        if not compare(_flush(o), _flush(np.asarray(r)), rtol=spec.rtol, atol=spec.atol,
+                       tol_dtype=_tol_dtype(o, weak, case), label="reference").ok:
+            return False
+    return True
+
+
+def _check_reference(ctx: _Ctx, case: Case, run: Run, ref_outs: list[np.ndarray],
+                     ref_fn: Callable[..., Any] | None = None) -> None:
     spec = ctx.spec
     outs = run.outputs or []
     if len(ref_outs) != len(outs):
@@ -556,6 +606,10 @@ def _check_reference(ctx: _Ctx, case: Case, run: Run, ref_outs: list[np.ndarray]
             worst = worst or c
     agg.example = worst.example if worst else None
     agg.ok = not failed
+    if failed and _ftz_explains(spec, case, outs, ref_outs, ref_fn):
+        ctx.add("reference", case, SKIP, "differs only where subnormals are flushed to zero "
+                "(a floating-point mode of the backend): " + "; ".join(failed), run=run, cmp=agg)
+        return
     ctx.add("reference", case, PASS if agg.ok else FAIL, "; ".join(failed), run=run, cmp=agg)
 
 

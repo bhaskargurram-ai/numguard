@@ -15,6 +15,8 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - `numguard scan` skipped every function without a readable signature, such as the C builtins in `torch.special` ("needs 1-3 positional array arguments"). Their arity is now taken from the reference function, or found by calling with one, two and three arguments.
+- The `nan` check passes when the reference drops the NaN too: `nanmax`, `fmax` and NaN in a mask or sign argument behave like that by design. A scan of `jax.numpy` flagged 17 such functions.
+- A `reference` mismatch that disappears when subnormal inputs and results are flushed to zero is recorded as skipped, with the reason, instead of failed. XLA on CPU flushes subnormals, and in a scan of `jax.numpy` and `jax.scipy.special` those differences were most of the flags.
 - Gradient checks no longer report false failures from finite differences at points where the reference is not finite (scipy's `gammaln` returns inf at subnormal arguments, and differences across the pole at 0 agree on a meaningless value) or where the function is a step function such as `round` (integer values at every sampled point).
 
 ## [1.1.0] - 2026-10-18

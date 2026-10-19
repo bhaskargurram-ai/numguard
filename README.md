@@ -360,8 +360,8 @@ Patterns in `include`, `exclude`, `allow_nonfinite`, `may_raise` and `ignore` ma
 | `mutation` | the function modifies its input arrays in place |
 | `dtype` | a floating output does not keep the input dtype (or does not match `out_dtype`) |
 | `finite` | finite inputs produce inf/NaN that the reference (rounded to the output dtype) does not |
-| `nan` | `nan="propagate"`: NaN input gives an output with no NaN. `nan="raise"`: no exception |
-| `reference` | values differ from the reference beyond `rtol`/`atol` (reports max abs/rel error and ULPs) |
+| `nan` | `nan="propagate"`: NaN input gives an output with no NaN, unless the reference drops that NaN too (`nanmax`, `fmax`, a NaN in a mask argument). `nan="raise"`: no exception |
+| `reference` | values differ from the reference beyond `rtol`/`atol` (reports max abs/rel error and ULPs). A difference that disappears when subnormal inputs and results are flushed to zero is skipped, not failed: it comes from the backend's floating-point mode (XLA on CPU, GPUs, `-ffast-math`) |
 | `fp_signals` | opt-in: an overflow / invalid / divide-by-zero signal on finite input |
 | `bounds` | opt-in: finite output outside `bounds=(lo, hi)` |
 | `post:<name>` | opt-in: a postcondition `post(args, outputs)` returns False or a message |
