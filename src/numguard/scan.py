@@ -168,6 +168,28 @@ def _arity(fn: Callable[..., Any]) -> int | None:
     return len(required)
 
 
+def _infer_arity(fn: Callable[..., Any], ref: Callable[..., Any] | None, backend: str) -> int | None:
+    """Arity of a function whose signature can't be read (C builtins, e.g. ``torch.special``).
+
+    The reference function's arity is tried first, then 1, 2 and 3: the
+    first number of arguments that does not raise ``TypeError`` wins.
+    """
+    first = _arity(ref) if ref is not None else None
+    tries = ([first] if first and 1 <= first <= 3 else []) + [k for k in (1, 2, 3) if k != first]
+    call = wrap(fn, backend)
+    base = np.linspace(0.1, 0.9, 8)
+    for k in tries:
+        try:
+            with np.errstate(all="ignore"):
+                call(*(base.copy() for _ in range(k)))
+        except TypeError:
+            continue
+        except Exception:  # noqa: BLE001 - right arity, other trouble; probe() reports it
+            return k
+        return k
+    return None
+
+
 def _to_np(out: Any) -> np.ndarray | None:
     if isinstance(out, (tuple, list, dict)):
         return None
@@ -270,7 +292,15 @@ def scan_module(module_name: str, *, reference_module: str | None = None, backen
         if _SKIP_NAME.search(name.lower()):
             entry.reason = "not a numerical function (by name)"
             continue
+        ref = getattr(ref_mod, name, None) if ref_mod is not None else None
+        ref = ref if callable(ref) else None
         arity = _arity(fn)
+        if arity is None:
+            try:
+                with _time_limit(timeout_s):
+                    arity = _infer_arity(fn, ref, backend)
+            except (BackendError, ScanTimeout):
+                arity = None
         if arity is None or not 1 <= arity <= 3:
             entry.reason = "needs 1-3 positional array arguments"
             continue
@@ -289,8 +319,7 @@ def scan_module(module_name: str, *, reference_module: str | None = None, backen
             entry.reason = found
             continue
         entry.domain, entry.elementwise = found
-        ref = getattr(ref_mod, name, None) if ref_mod is not None else None
-        if ref is not None and callable(ref):
+        if ref is not None:
             entry.reference = f"{reference_module}.{name}"
             # A function whose result depends on its neighbours looks
             # non-elementwise when probed, which is exactly the bug the

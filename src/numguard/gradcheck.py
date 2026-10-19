@@ -175,7 +175,10 @@ def finite_difference_grad(valfn: Callable[..., Any], args64: Sequence[np.ndarra
     functions such as ``logsumexp`` or ``softmax`` vary.
 
     Returns ``(estimate, uncertainty)``. Both are NaN where the estimate is
-    not trustworthy: the step would leave the declared domain or overflow,
+    not trustworthy: the function is not finite at the point, every value
+    sampled is an integer (a step function such as ``round``, whose
+    derivative is zero almost everywhere), the step would leave the declared
+    domain or overflow,
     the estimates disagree by more than 10% (a kink, or a function varying
     faster than the step can resolve), or, without ``elementwise=True``, the
     element is beyond the first ``max_points`` perturbed one at a time.
@@ -206,10 +209,11 @@ def finite_difference_grad(valfn: Callable[..., Any], args64: Sequence[np.ndarra
             raise ValueError("elementwise=True but the output shape differs from the input shape")
         sp, sm = reduce(fp), reduce(fm)
         hh = step if mask is None else step[mask]
-        return (sp - sm) / (2.0 * hh), np.maximum(np.abs(sp), np.abs(sm)), sp + sm
+        integral = (sp == np.round(sp)) & (sm == np.round(sm))
+        return (sp - sm) / (2.0 * hh), np.maximum(np.abs(sp), np.abs(sm)), sp + sm, integral
 
     def estimate(mask: np.ndarray | None, f0: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        (d1, a1, _), (d2, a2, _), (d3, a3, s3), (d4, _, _) = (
+        (d1, a1, _, i1), (d2, a2, _, i2), (d3, a3, s3, i3), (d4, _, _, i4) = (
             central(h * s, mask) for s in (1.0, 0.5, 0.25, 0.0921))
         hh = h if mask is None else h[mask]
         r1, r2 = (4 * d2 - d1) / 3, (4 * d3 - d2) / 3
@@ -218,7 +222,11 @@ def finite_difference_grad(valfn: Callable[..., Any], args64: Sequence[np.ndarra
         # the smallest step must be locally linear: curvature small next to slope
         curvature = np.abs(s3 - 2 * f0)
         slope = np.abs(d3) * 2 * (hh / 4)
-        linear = curvature <= 0.25 * slope + 64 * eps * np.maximum(a3, np.abs(f0))
+        linear = np.isfinite(f0) & (curvature <= 0.25 * slope + 64 * eps * np.maximum(a3, np.abs(f0)))
+        # integer values at every step: a step function (round, floor, sign), whose derivative is
+        # zero almost everywhere; differences across its steps say nothing about it
+        steps = i1 & i2 & i3 & i4 & (f0 == np.round(f0))
+        linear &= ~steps
         # a non-dyadic step guards against estimates that agree by coincidence
         # (a periodic function sampled at multiples of its period)
         consistent = np.abs(d4 - r2) <= 0.1 * np.abs(r2) + unc

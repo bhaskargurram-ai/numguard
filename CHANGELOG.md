@@ -11,6 +11,11 @@ All notable changes to this project are documented here. The format follows
 - A documentation site (MkDocs, with an API reference built from the docstrings), published with the landing page at https://bhaskargurram-ai.github.io/numguard/docs/. Its pages include the README's sections, so the two can't drift apart.
 - `numguard scan --timeout SECONDS` (default 300): a hard per-function limit, so one slow function (JAX recompiles for every new input shape) cannot stall a scan. A function over the limit is recorded as an error and the scan moves on.
 
+### Fixed
+
+- `numguard scan` skipped every function without a readable signature, such as the C builtins in `torch.special` ("needs 1-3 positional array arguments"). Their arity is now taken from the reference function, or found by calling with one, two and three arguments.
+- Gradient checks no longer report false failures from finite differences at points where the reference is not finite (scipy's `gammaln` returns inf at subnormal arguments, and differences across the pole at 0 agree on a meaningless value) or where the function is a step function such as `round` (integer values at every sampled point).
+
 ## [1.1.0] - 2026-10-18
 
 ### Added

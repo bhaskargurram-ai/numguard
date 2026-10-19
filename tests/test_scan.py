@@ -22,7 +22,23 @@ MODULE = textwrap.dedent('''
     import numpy as np
 
     __all__ = ["good_exp", "shared_loop_exp", "mean_center", "logsumexp", "four_args",
-               "describe", "save_table", "safe_log", "Thing"]
+               "describe", "save_table", "safe_log", "Thing", "builtin_exp", "builtin_hypot"]
+
+
+    class _Builtin:
+        """Like a C builtin (torch.special.*): callable, but without a readable signature."""
+
+        def __init__(self, f, nargs):
+            self.f, self.nargs = f, nargs
+
+        @property
+        def __signature__(self):
+            raise ValueError("no signature found for builtin")
+
+        def __call__(self, *args):
+            if len(args) != self.nargs:
+                raise TypeError(f"takes {self.nargs} arguments ({len(args)} given)")
+            return self.f(*args)
 
     def good_exp(x):
         return np.exp(x)
@@ -59,6 +75,9 @@ MODULE = textwrap.dedent('''
 
     class Thing:
         pass
+
+    builtin_exp = _Builtin(np.exp, 1)
+    builtin_hypot = _Builtin(np.hypot, 2)
 ''')
 
 REFERENCE = textwrap.dedent('''
@@ -120,6 +139,13 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(by["save_table"].reason, "not a numerical function (by name)")
         # no reference: the finite check is off, so overflow alone is not flagged
         self.assertNotIn("finite", by["logsumexp"].failed_checks)
+
+    def test_functions_without_a_signature_are_probed_for_their_arity(self):
+        res = scan_module("scan_target_mod", include=["^builtin_"])
+        by = {e.name: e for e in res.entries}
+        self.assertEqual((by["builtin_exp"].status, by["builtin_exp"].arity), ("checked", 1))
+        self.assertEqual((by["builtin_hypot"].status, by["builtin_hypot"].arity), ("checked", 2))
+        self.assertEqual(by["builtin_hypot"].failed_checks, [])
 
     def test_scan_with_reference_module(self):
         res = scan_module("scan_target_mod", reference_module="scan_reference_mod",

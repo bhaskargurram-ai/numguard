@@ -108,6 +108,24 @@ class FiniteDifferenceTests(unittest.TestCase):
         est, _ = finite_difference_grad(np.abs, [np.array([0.0])], 0, None, {}, elementwise=True)
         self.assertTrue(np.isnan(est[0]))
 
+    def test_non_finite_values_and_step_functions_are_skipped(self):
+        # scipy's gammaln returns inf at subnormal arguments; |gammaln| is symmetric about
+        # the pole at 0, so differences across it agree on a meaningless -0.577
+        def lgamma_inf_at_tiny(v):
+            return np.where(np.abs(v) < 1e-300, np.inf, sp.gammaln(v))
+
+        est, _ = finite_difference_grad(lgamma_inf_at_tiny, [np.array([-7.9e-323, 2.5])], 0, None, {},
+                                        elementwise=True)
+        self.assertTrue(np.isnan(est[0]))
+        self.assertAlmostEqual(est[1], sp.digamma(2.5), places=8)
+        # round is the identity above 2**52 and a staircase finer than the step at 1e9
+        x = np.array([-6.46e307, 1.07374e9, 154591.0])
+        est, _ = finite_difference_grad(np.round, [x], 0, None, {}, elementwise=True)
+        self.assertTrue(np.all(np.isnan(est)), est)
+        # an integer-valued point of a smooth function is still differentiated
+        est, _ = finite_difference_grad(lambda v: v * 1.0, [np.array([5.0])], 0, None, {}, elementwise=True)
+        self.assertAlmostEqual(est[0], 1.0, places=10)
+
     def test_domain_boundary_is_skipped(self):
         spec = numguard.api.make_spec(np.sqrt, domain="nonneg")
         x = np.array([0.0, 1e-300, 4.0])
