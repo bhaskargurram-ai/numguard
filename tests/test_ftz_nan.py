@@ -44,6 +44,18 @@ class FlushToZeroTests(unittest.TestCase):
                              elementwise=True, dtypes=["float32"])
         self.assertIn("finite", failed(rep))
 
+    def test_flushed_intermediate_in_a_running_sum_is_not_a_failure(self):
+        def cumsum_ftz(x):  # every partial sum flushed, as XLA on CPU does
+            out, acc = np.empty_like(x), np.zeros((), x.dtype)
+            for i, v in enumerate(_ftz(x)):
+                acc = _ftz(acc + v)
+                out[i] = acc
+            return out
+
+        rep = numguard.check(cumsum_ftz, reference=np.cumsum, domain="any", dtypes=["float32"],
+                             include=["tiny", "subnormal", "random"])
+        self.assertNotIn("reference", failed(rep), rep.summary())
+
     def test_real_errors_near_subnormals_still_fail(self):
         def wrong(x):
             return _ftz(x) * 2 + np.asarray(1e-3, dtype=np.asarray(x).dtype)

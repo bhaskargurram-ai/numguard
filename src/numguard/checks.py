@@ -598,7 +598,12 @@ def _ftz_explains(spec: "Spec", case: Case, outs: list[np.ndarray], ref_outs: li
         return False
     for o, r, weak in zip(outs, ref2.outputs, [False] * len(outs)):
         r = _round_like(r, o, case)
-        if not compare(_flush(o), _flush(np.asarray(r)), rtol=spec.rtol, atol=spec.atol,
+        # a flushed subnormal intermediate (a partial sum, a product) shifts a
+        # normal result by less than the smallest normal number
+        atol = float(np.finfo(o.dtype).tiny) if o.dtype.kind == "f" else 0.0
+        if spec.atol is not None and not isinstance(spec.atol, Mapping):
+            atol = max(atol, float(spec.atol))
+        if not compare(_flush(o), _flush(np.asarray(r)), rtol=spec.rtol, atol=atol,
                        tol_dtype=_tol_dtype(o, weak, case), label="reference").ok:
             return False
     return True
