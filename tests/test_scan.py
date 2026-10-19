@@ -144,6 +144,7 @@ class ScanTests(unittest.TestCase):
         self.assertNotIn("Thing", names)
 
     def test_probe(self):
+        self.assertEqual(probe(np.sort, 1), ("any", False))  # same shape, but reorders
         self.assertEqual(probe(np.exp, 1), ("any", True))
         self.assertEqual(probe(np.log, 1), ("positive", True))
         self.assertEqual(probe(lambda p: np.log(p / (1 - p)) + np.sqrt(1 - p) * np.sqrt(p), 1)[0], "unit_interval")

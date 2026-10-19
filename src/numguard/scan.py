@@ -54,9 +54,12 @@ _SKIP_NAME = re.compile(
     r"linspace|logspace|geomspace|meshgrid|mgrid|ogrid|copy|astype|dtype|shape|ndim|size)($|_)"
 )
 
-_DOMAINS = (("any", np.linspace(-3.0, 3.0, 8) + 0.0625),
-            ("positive", np.linspace(0.125, 3.0, 8)),
-            ("unit_interval", np.linspace(0.05, 0.95, 8)))
+# Values out of order, so that sorting, deduplicating or reordering functions
+# (whose output has the input's shape) do not pass for elementwise.
+_ORDER = np.array([5, 2, 7, 0, 3, 6, 1, 4])
+_DOMAINS = (("any", (np.linspace(-3.0, 3.0, 8) + 0.0625)[_ORDER]),
+            ("positive", np.linspace(0.125, 3.0, 8)[_ORDER]),
+            ("unit_interval", np.linspace(0.05, 0.95, 8)[_ORDER]))
 
 
 @dataclass
@@ -352,6 +355,7 @@ def scan_module(module_name: str, *, reference_module: str | None = None, backen
                         break
                     reports.append(check(
                         fn, inputs=[entry.domain] * arity, reference=ref if entry.reference else None,
+                        ref_upcast=reference_module != "numpy",
                         dtypes=[dt], backend=backend, elementwise=entry.elementwise,
                         finite=bool(entry.reference), large_n=large_n, name=f"{module_name}.{name}"))
         except ScanTimeout as err:

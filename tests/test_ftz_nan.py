@@ -32,6 +32,18 @@ class FlushToZeroTests(unittest.TestCase):
         skipped = [r for r in rep.results if r.check == "reference" and r.status == "skip"]
         self.assertTrue(skipped and "flushed to zero" in skipped[0].message)
 
+    def test_non_finite_from_flushed_subnormal_inputs_is_not_a_finite_failure(self):
+        def log_daz(x):  # subnormal inputs read as zero: log gives -inf
+            return np.log(_ftz(x))
+
+        rep = numguard.check(log_daz, reference=np.log, domain="positive", elementwise=True, dtypes=["float32"])
+        self.assertNotIn("finite", failed(rep), rep.summary())
+        self.assertTrue(any(r.check == "finite" and r.status == "skip" for r in rep.results))
+        # without the flush, a function that overflows where the reference doesn't still fails
+        rep = numguard.check(lambda x: np.log(x) / (x * 0 + _ftz(x * 0)), reference=np.log, domain="positive",
+                             elementwise=True, dtypes=["float32"])
+        self.assertIn("finite", failed(rep))
+
     def test_real_errors_near_subnormals_still_fail(self):
         def wrong(x):
             return _ftz(x) * 2 + np.asarray(1e-3, dtype=np.asarray(x).dtype)
